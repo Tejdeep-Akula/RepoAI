@@ -5,4 +5,7 @@
     <Project Path="src/RepoAI.Domain/RepoAI.Domain.csproj" />
     <Project Path="src/RepoAI.Infrastructure/RepoAI.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RepoAI.Api.Tests/RepoAI.Api.Tests.csproj" />
+  </Folder>
 </Solution>

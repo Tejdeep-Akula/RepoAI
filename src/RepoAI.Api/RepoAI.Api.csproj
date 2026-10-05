@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../RepoAI.Application/RepoAI.Application.csproj" />
     <ProjectReference Include="../RepoAI.Infrastructure/RepoAI.Infrastructure.csproj" />
   </ItemGroup>

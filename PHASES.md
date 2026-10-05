@@ -5,7 +5,7 @@ describe the planned order; they do not authorize implementation. Before each
 step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
-Phase 1 is **Complete**. Phases 2–13 are **Not started**.
+Phases 1 and 2 are **Complete**. Phases 3–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -35,11 +35,28 @@ moved into each `.csproj`; `Directory.Build.props` removed. `global.json` retain
 
 ## Phase 2 — API contracts and Swagger
 
+**Status:** Complete — 30 September 2026.
+
 Add OpenAPI documentation and Swagger UI for interactive API testing. Establish
 consistent request validation, error responses, and API organization.
 
 **Complete when:** approved endpoints can be explored and tested through Swagger,
 including success and validation-error responses.
+
+**Delivered:** Development-only Swagger UI and built-in OpenAPI, versioned status
+and stateless repository-URL validation endpoints, controller/contract organization,
+automatic request validation, and Problem Details responses with error codes and
+trace IDs. The existing root and health endpoints are preserved. This phase does
+not fetch or persist repositories.
+
+**Verified:** solution build passed with zero warnings/errors; 23 integration
+tests passed, covering success, invalid/missing/malformed input, field limits,
+unsupported media types, 404/405 errors, safe 500 responses, Swagger/OpenAPI
+availability, and production documentation restrictions. Swagger HTML/schema were
+checked programmatically; interactive browser clicks were not automated.
+
+**Documentation:** `README.md` includes Swagger examples, endpoint/error contracts
+and test commands. Run instructions now match the existing HTTP-only launch profile.
 
 ## Phase 3 — PostgreSQL and persistence
 
