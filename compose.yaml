@@ -1,0 +1,25 @@
+# Local development database only. Application containers come in Phase 13.
+name: repoai
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${REPOAI_DB_NAME:-repoai}
+      POSTGRES_USER: ${REPOAI_DB_USER:-repoai_admin}
+      POSTGRES_PASSWORD: ${REPOAI_DB_PASSWORD:?Set REPOAI_DB_PASSWORD in your local .env file}
+    ports:
+      - "127.0.0.1:${REPOAI_DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:

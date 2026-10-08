@@ -5,7 +5,8 @@ describe the planned order; they do not authorize implementation. Before each
 step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
-Phases 1 and 2 are **Complete**. Phases 3–13 are **Not started**.
+Phases 1–3 are **Complete**.
+Phase 4 is **In progress**. Phases 5–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -60,23 +61,63 @@ and test commands. Run instructions now match the existing HTTP-only launch prof
 
 ## Phase 3 — PostgreSQL and persistence
 
-Connect PostgreSQL through Entity Framework Core, introduce migrations, and define
-the initial user, project, and ownership records. Add more entities as their
-features are implemented rather than designing every table upfront.
+**Status:** Complete — 6 October 2026.
 
-**Complete when:** migrations create the database and persisted data survives an
-application restart.
+**Delivered:** PostgreSQL 17 Compose configuration with a persistent named volume,
+localhost-only published port and health check; `.env.example`; EF Core/Npgsql
+configuration; initial User and Project entities and ownership relationship; an
+EF Core design-time context factory; initial migration and SQL script. The initial
+migration has been applied to the local database. In Development, the API reads
+its connection string from `appsettings.json`; container deployments use normal
+configuration overrides. The API applies pending migrations at startup.
+
+**Complete when:** the API can start with the database, apply pending migrations,
+and the resulting schema/migration history remains present after API and database
+container restarts that retain the named volume. Each implementation step still
+requires approval.
+
+**Verified — 6 October 2026:** PostgreSQL restarted without deleting its named
+volume and returned healthy. The `__EFMigrationsHistory` table retained
+`20261005142008_InitialCreate`, and the `users` and `projects` tables remained.
+Afterward, the API started, reported that the database was already up to date,
+and `GET /health` returned `Healthy`.
+
+**Next:** Configure a Google Web OAuth client and local JWT key, then verify
+Google sign-in and owner-scoped project access end to end.
 
 ## Phase 4 — Google sign-in and access control
 
-Implement Google sign-in through OAuth 2.0/OpenID Connect, map Google identities
-to local users, and enforce project access permissions.
+**Status:** In progress — local Google identity storage foundation added.
 
-We will agree on the API authentication credential mechanism before implementation.
+Implement Google sign-in through OAuth 2.0/OpenID Connect, map Google identities
+to local users, and enforce project access permissions. After authentication is
+available, add the first Project API persistence flow: accept and return API DTOs,
+persist through the application/infrastructure layers, and restrict reads and
+writes to the owning user. Do not expose EF entities directly.
+
+**Delivered so far:** `User.GoogleSubject`, a required unique identifier column
+and index, and the `AddGoogleSubject` EF migration plus SQL script. The local
+users table was empty when this migration was created; the API applies it at
+startup. The API now has `POST /api/v1/auth/google`, which verifies a Google ID
+token against the configured client ID, finds or creates the local user by the
+verified `sub`, and issues a 15-minute stateless JWT. If Development has no JWT
+key configured, bearer validation uses a temporary process-local key and sign-in
+remains unavailable. Non-Development requires the real Google client ID and JWT
+signing key. No
+login-session or refresh-token records are stored. Authorized Project endpoints support
+create, list and get-by-ID; project ownership is taken from the JWT and included
+in every project query. A caller cannot supply or change `OwnerId`, and another
+user's project is returned as not found.
+
+**Next:** Configure the Google Web OAuth client and a private local JWT signing
+key, apply the pending migration by starting the API, then verify sign-in and
+owner isolation end to end. A browser client is still needed to obtain a Google
+ID token through the intended user flow.
+
 “Chat sessions” means saved conversations; it does not require a login-session table.
 
-**Complete when:** users can sign in and access their authorized resources, while
-unauthorized and cross-user access are rejected.
+**Complete when:** users can sign in, create and retrieve their own persisted
+projects, while unauthenticated and cross-user access are rejected.
 
 ## Phase 5 — Web application workspace
 

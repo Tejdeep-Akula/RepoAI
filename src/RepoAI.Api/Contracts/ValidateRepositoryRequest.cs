@@ -11,18 +11,10 @@ public sealed class ValidateRepositoryRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (!Uri.TryCreate(RepositoryUrl, UriKind.Absolute, out var uri)
-            || uri.Scheme != Uri.UriSchemeHttps
-            || uri.HostNameType != UriHostNameType.Dns
-            || string.IsNullOrWhiteSpace(uri.Host)
-            || !uri.IsDefaultPort
-            || !string.IsNullOrEmpty(uri.UserInfo)
-            || !string.IsNullOrEmpty(uri.Query)
-            || !string.IsNullOrEmpty(uri.Fragment)
-            || uri.AbsolutePath.Trim('/').Length == 0)
+        if (!RepositoryUrlRules.IsValid(RepositoryUrl))
         {
             yield return new ValidationResult(
-                "Use an absolute HTTPS URL with a hostname and repository path, without credentials, a custom port, query, or fragment.",
+                RepositoryUrlRules.ErrorMessage,
                 [nameof(RepositoryUrl)]);
         }
     }
