@@ -14,5 +14,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <ProjectReference Include="../../src/RepoAI.Api/RepoAI.Api.csproj" />
+    <ProjectReference Include="../../src/RepoAI.Worker/RepoAI.Worker.csproj" Aliases="Worker" />
   </ItemGroup>
 </Project>

@@ -9,6 +9,8 @@ public sealed class RepoAIDbContext(DbContextOptions<RepoAIDbContext> options) :
 
     public DbSet<Project> Projects => Set<Project>();
 
+    public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepoAIDbContext).Assembly);

@@ -16,6 +16,13 @@ type RepositoryValidation = {
   reachabilityChecked: boolean
 }
 
+type Project = {
+  id: string
+  name: string
+  repositoryUrl: string
+  createdAtUtc: string
+}
+
 type ProblemDetails = {
   title?: string
   detail?: string
@@ -117,6 +124,15 @@ function App() {
   const [signIn, setSignIn] = useState<RepoAiSignInResponse | null>(null)
   const [signInError, setSignInError] = useState('')
   const [isSigningIn, setIsSigningIn] = useState(false)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [projectLoadStatus, setProjectLoadStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle')
+  const [projectLoadError, setProjectLoadError] = useState('')
+  const [projectReloadKey, setProjectReloadKey] = useState(0)
+  const [isProjectFormOpen, setIsProjectFormOpen] = useState(false)
+  const [projectName, setProjectName] = useState('')
+  const [projectRepositoryUrl, setProjectRepositoryUrl] = useState('')
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [createProjectError, setCreateProjectError] = useState('')
   const [googleScriptError, setGoogleScriptError] = useState('')
   const [googleButtonContainer, setGoogleButtonContainer] = useState<HTMLDivElement | null>(null)
   const googleIdentityInitialized = useRef(false)
@@ -142,6 +158,9 @@ function App() {
         throw new Error(explainProblem(problem, 'Google sign-in could not be completed.'))
       }
 
+      setProjects([])
+      setProjectLoadError('')
+      setProjectLoadStatus('loading')
       setSignIn((await response.json()) as RepoAiSignInResponse)
     } catch (error) {
       setSignInError(
@@ -225,6 +244,56 @@ function App() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (!signIn) return
+
+    const controller = new AbortController()
+
+    fetch(`${apiBaseUrl}/api/v1/projects`, {
+      headers: { Authorization: `${signIn.tokenType} ${signIn.accessToken}` },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (response.status === 401) {
+          setSignInError('Your RepoAI access token expired. Please sign in again.')
+          setProjects([])
+          setProjectLoadStatus('idle')
+          setIsProjectFormOpen(false)
+          setSignIn(null)
+          return null
+        }
+        if (!response.ok) {
+          let problem: ProblemDetails = {}
+          try {
+            problem = (await response.json()) as ProblemDetails
+          } catch {
+            // Some network or proxy errors do not return a Problem Details body.
+          }
+          throw new Error(explainProblem(problem, 'Could not load your projects.'))
+        }
+        return (await response.json()) as Project[]
+      })
+      .then((result) => {
+        if (result) {
+          setProjects(result)
+          setProjectLoadStatus('loaded')
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setProjectLoadError(
+          error instanceof TypeError
+            ? 'Could not reach RepoAI.Api. Check that the API is running.'
+            : error instanceof Error
+              ? error.message
+              : 'Could not load your projects.',
+        )
+        setProjectLoadStatus('error')
+      })
+
+    return () => controller.abort()
+  }, [projectReloadKey, signIn])
+
   async function validateRepository(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setValidation(null)
@@ -254,6 +323,59 @@ function App() {
       )
     } finally {
       setIsValidating(false)
+    }
+  }
+
+  async function createProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!signIn) return
+
+    setCreateProjectError('')
+    setIsCreatingProject(true)
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/projects`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `${signIn.tokenType} ${signIn.accessToken}`,
+        },
+        body: JSON.stringify({ name: projectName, repositoryUrl: projectRepositoryUrl }),
+      })
+
+      if (response.status === 401) {
+        setSignInError('Your RepoAI access token expired. Please sign in again.')
+        setProjects([])
+        setProjectLoadStatus('idle')
+        setIsProjectFormOpen(false)
+        setSignIn(null)
+        return
+      }
+      if (!response.ok) {
+        let problem: ProblemDetails = {}
+        try {
+          problem = (await response.json()) as ProblemDetails
+        } catch {
+          // Some network or proxy errors do not return a Problem Details body.
+        }
+        throw new Error(explainProblem(problem, 'Could not create this project.'))
+      }
+
+      const createdProject = (await response.json()) as Project
+      setProjects((currentProjects) => [createdProject, ...currentProjects])
+      setProjectName('')
+      setProjectRepositoryUrl('')
+      setIsProjectFormOpen(false)
+    } catch (error) {
+      setCreateProjectError(
+        error instanceof TypeError
+          ? 'Could not reach RepoAI.Api. Check that the API is running.'
+          : error instanceof Error
+            ? error.message
+            : 'Could not create this project.',
+      )
+    } finally {
+      setIsCreatingProject(false)
     }
   }
 
@@ -347,12 +469,99 @@ function App() {
 
           <section className="lower-grid">
             <div className="empty-card">
-              <div className="empty-card-top"><div><div className="section-kicker">YOUR WORKSPACE</div><h2>Projects</h2></div><span className="count-badge">0</span></div>
-              <div className="empty-state">
-                <div className="empty-illustration"><span className="empty-square square-back" /><span className="empty-square square-front"><Icon name="folder" /></span><span className="empty-star">✳</span></div>
-                <strong>Your first project starts here</strong>
-                <p>After sign-in, your analyzed repositories and videos will live here.</p>
+              <div className="empty-card-top">
+                <div><div className="section-kicker">YOUR WORKSPACE</div><h2>Projects</h2></div>
+                <div className="project-heading-actions">
+                  <span className="count-badge" aria-label={`${projects.length} projects`}>{projects.length}</span>
+                  {signIn && (
+                    <button
+                      className="new-project-button"
+                      type="button"
+                      onClick={() => {
+                        setCreateProjectError('')
+                        setIsProjectFormOpen((isOpen) => !isOpen)
+                      }}
+                    >
+                      {isProjectFormOpen ? 'Cancel' : 'New project'}
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {signIn && isProjectFormOpen && (
+                <form className="project-form" onSubmit={createProject}>
+                  <label htmlFor="project-name">Project name</label>
+                  <input
+                    id="project-name"
+                    type="text"
+                    required
+                    minLength={1}
+                    maxLength={200}
+                    placeholder="e.g. Payments service"
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                  />
+                  <label htmlFor="project-repository-url">Git repository URL</label>
+                  <input
+                    id="project-repository-url"
+                    type="url"
+                    required
+                    maxLength={2048}
+                    placeholder="https://github.com/owner/repository"
+                    value={projectRepositoryUrl}
+                    onChange={(event) => setProjectRepositoryUrl(event.target.value)}
+                  />
+                  <button type="submit" disabled={isCreatingProject}>
+                    {isCreatingProject ? 'Creating…' : 'Create project'}
+                  </button>
+                  {createProjectError && <p className="project-form-error" role="alert">{createProjectError}</p>}
+                </form>
+              )}
+
+              {!signIn && (
+                <div className="empty-state">
+                  <div className="empty-illustration"><span className="empty-square square-back" /><span className="empty-square square-front"><Icon name="folder" /></span><span className="empty-star">✳</span></div>
+                  <strong>Sign in to view your projects</strong>
+                  <p>Your projects are private to your RepoAI account.</p>
+                </div>
+              )}
+              {signIn && projectLoadStatus === 'loading' && <p className="project-message" role="status">Loading your projects…</p>}
+              {signIn && projectLoadStatus === 'error' && (
+                <div className="project-load-error" role="alert">
+                  <p>{projectLoadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProjectLoadError('')
+                      setProjectLoadStatus('loading')
+                      setProjectReloadKey((key) => key + 1)
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+              {signIn && projectLoadStatus === 'loaded' && projects.length === 0 && (
+                <div className="empty-state">
+                  <div className="empty-illustration"><span className="empty-square square-back" /><span className="empty-square square-front"><Icon name="folder" /></span><span className="empty-star">✳</span></div>
+                  <strong>Your first project starts here</strong>
+                  <p>Create a project to save its repository in your private workspace.</p>
+                </div>
+              )}
+              {signIn && projectLoadStatus === 'loaded' && projects.length > 0 && (
+                <ul className="project-list" aria-label="Your projects">
+                  {projects.map((project) => (
+                    <li className="project-list-item" key={project.id}>
+                      <span className="project-folder-icon"><Icon name="folder" /></span>
+                      <span className="project-list-copy">
+                        <strong>{project.name}</strong>
+                        <a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a>
+                      </span>
+                      <time dateTime={project.createdAtUtc}>{new Date(project.createdAtUtc).toLocaleDateString()}</time>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <aside className="setup-card">
@@ -371,6 +580,10 @@ function App() {
                     onClick={() => {
                       window.google?.accounts?.id?.disableAutoSelect()
                       setSignIn(null)
+                      setProjects([])
+                      setProjectLoadStatus('idle')
+                      setProjectLoadError('')
+                      setIsProjectFormOpen(false)
                     }}
                   >
                     Clear sign-in

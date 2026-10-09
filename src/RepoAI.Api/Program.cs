@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using RepoAI.Api.Authentication;
 using RepoAI.Api.Errors;
 using RepoAI.Application.Authentication;
+using RepoAI.Application.Jobs;
 using RepoAI.Application.Projects;
 using RepoAI.Infrastructure.Authentication;
 using RepoAI.Infrastructure.Persistence;
@@ -88,6 +89,8 @@ builder.Services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
 builder.Services.AddScoped<GoogleSignInService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<ProjectService>();
+builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
+builder.Services.AddScoped<BackgroundJobService>();
 
 builder.Services.AddHealthChecks();
 if (builder.Environment.IsDevelopment())

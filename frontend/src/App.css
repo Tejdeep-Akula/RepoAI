@@ -286,7 +286,35 @@
 .empty-card { min-height: 255px; padding: 20px 22px; }
 .empty-card-top { display: flex; align-items: center; justify-content: space-between; }
 .empty-card h2 { margin-top: 5px; }
+.project-heading-actions { display: flex; align-items: center; gap: 9px; }
 .count-badge { display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid #eeedf1; border-radius: 8px; color: #8c8995; font-size: 10px; }
+.new-project-button, .project-form button, .project-load-error button { min-height: 31px; padding: 0 11px; border: 1px solid #e3ddea; border-radius: 7px; background: #fff; color: #625873; cursor: pointer; font: inherit; font-size: 10px; font-weight: 600; }
+.new-project-button:hover, .project-load-error button:hover { background: #f8f5fc; }
+.project-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 8px 10px; margin-top: 17px; padding: 14px; border: 1px solid #eeeaf3; border-radius: 9px; background: #fcfbfe; }
+.project-form label { color: #777480; font-size: 9px; font-weight: 600; }
+.project-form label:first-of-type { grid-column: 1; grid-row: 1; }
+.project-form label:last-of-type { grid-column: 2; grid-row: 1; }
+.project-form input { min-width: 0; height: 35px; padding: 0 9px; border: 1px solid #e5e3e9; border-radius: 7px; outline: 0; background: white; color: #33323d; font: inherit; font-size: 10px; }
+.project-form input:focus { border-color: #b49bd6; box-shadow: 0 0 0 3px #8c6cbd18; }
+.project-form input:first-of-type { grid-column: 1; grid-row: 2; }
+.project-form input:nth-of-type(2) { grid-column: 2; grid-row: 2; }
+.project-form button { grid-column: 3; grid-row: 2; min-height: 35px; border-color: #25212f; background: #25212f; color: white; }
+.project-form button:hover:not(:disabled) { background: #483762; }
+.project-form button:disabled { cursor: wait; opacity: .6; }
+.project-form-error { grid-column: 1 / -1; margin: 0; color: #a54843; font-size: 10px; }
+.project-message { margin: 26px 0; color: #82808c; font-size: 11px; text-align: center; }
+.project-load-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 11px; border: 1px solid #f1d7d6; border-radius: 8px; background: #fff7f6; color: #a54843; font-size: 10px; }
+.project-load-error p { margin: 0; }
+.project-load-error button { flex: 0 0 auto; }
+.project-list { display: grid; gap: 7px; max-height: 270px; overflow: auto; margin: 14px 0 0; padding: 0; list-style: none; }
+.project-list-item { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 11px 10px; border: 1px solid #f0eef3; border-radius: 8px; background: #fff; }
+.project-folder-icon { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 9px; background: #f7f3fb; color: #8c70b2; }
+.project-folder-icon .icon { width: 17px; height: 17px; }
+.project-list-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.project-list-copy strong { overflow: hidden; color: #44424e; font-size: 10px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.project-list-copy a { overflow: hidden; color: #8b8497; font-size: 9px; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.project-list-copy a:hover { color: #705492; text-decoration: underline; }
+.project-list-item time { flex: 0 0 auto; color: #a19eaa; font-size: 9px; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; padding: 29px 16px 9px; text-align: center; }
 .empty-illustration { position: relative; width: 61px; height: 50px; margin-bottom: 12px; }
@@ -357,5 +385,9 @@
   .repository-form { flex-wrap: wrap; padding: 9px; }
   .repository-form input { width: calc(100% - 32px); min-height: 30px; }
   .repository-form button { width: 100%; }
+  .project-form { grid-template-columns: 1fr; }
+  .project-form input, .project-form input:nth-of-type(2), .project-form button { grid-column: 1; grid-row: auto; }
+  .project-list-item { gap: 7px; padding: 9px 7px; }
+  .project-list-item time { font-size: 8px; }
   .page-footer { flex-direction: column; }
 }

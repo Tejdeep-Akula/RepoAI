@@ -5,8 +5,8 @@ describe the planned order; they do not authorize implementation. Before each
 step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
-Phases 1–3 are **Complete**.
-Phases 4 and 5 are **In progress**. Phases 6–13 are **Not started**.
+Phases 1–6 are **Complete**.
+Phases 7–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -87,7 +87,7 @@ Google sign-in and owner-scoped project access end to end.
 
 ## Phase 4 — Google sign-in and access control
 
-**Status:** In progress — local Google identity storage foundation added.
+**Status:** Complete — Google sign-in and owner-scoped projects verified locally.
 
 Implement Google sign-in through OAuth 2.0/OpenID Connect, map Google identities
 to local users, and enforce project access permissions. After authentication is
@@ -109,11 +109,6 @@ create, list and get-by-ID; project ownership is taken from the JWT and included
 in every project query. A caller cannot supply or change `OwnerId`, and another
 user's project is returned as not found.
 
-**Next:** Configure the Google Web OAuth client and a private local JWT signing
-key, apply the pending migration by starting the API, then verify sign-in and
-owner isolation end to end. A browser client is still needed to obtain a Google
-ID token through the intended user flow.
-
 “Chat sessions” means saved conversations; it does not require a login-session table.
 
 **Complete when:** users can sign in, create and retrieve their own persisted
@@ -121,7 +116,7 @@ projects, while unauthenticated and cross-user access are rejected.
 
 ## Phase 5 — Web application workspace
 
-**Status:** In progress — frontend foundation created.
+**Status:** Complete — authenticated project list/create verified in the browser.
 
 Use React with TypeScript for the browser UI and Vite for local development and
 production builds. The local Vite origin is pinned to `http://localhost:5173`;
@@ -133,15 +128,13 @@ indicator, and repository URL syntax validation wired to the existing API.
 Development CORS accepts only `http://localhost:5173`. Google Identity Services
 is wired to `POST /api/v1/auth/google`; the RepoAI bearer token remains in
 browser memory and is not persisted. The Google Client Secret is not used.
-Authenticated project loading and creation are not connected yet.
+After sign-in, the workspace loads only the caller's projects using the bearer
+token and supports creating projects with a name and HTTPS repository URL.
+Project loading, empty, error, retry and create states are shown in the UI.
 
 **Verified:** frontend production build and lint pass. CORS tests cover allowed
 and disallowed origins. Google sign-in was verified locally with the API,
 PostgreSQL, and the OAuth client configured for the frontend origin.
-
-**Next:** Restart the API and Vite dev server to load local OAuth configuration,
-then verify browser sign-in. After sign-in works, connect the authenticated
-project list and creation flows.
 
 **Complete when:** an authenticated user can manage their own projects through the UI.
 
@@ -149,6 +142,22 @@ project list and creation flows.
 
 Introduce background workers, persisted job status, progress reporting, retry and
 cancellation behavior. This foundation supports long repository and video tasks.
+
+**Status:** Complete — PostgreSQL-backed queue, API contract and Worker host tested locally.
+
+The queue stores typed JSON payloads, attempt counts, progress, idempotency keys,
+and worker leases in PostgreSQL. Workers claim supported job kinds with
+`FOR UPDATE SKIP LOCKED`; expired leases are retried after a worker restart.
+Authenticated users can inspect and cancel their own jobs. A development-only
+progress job exercises progress, cancellation and retry behavior; it does not
+fetch or analyze repositories. Real repository-analysis handlers belong to
+Phase 7.
+
+**Verified:** solution builds with zero warnings and errors; EF reports no pending
+model changes; the runtime migration applied successfully. Automated tests cover
+idempotent enqueue, progress, retry, cancellation, lease recovery, handler behavior,
+and unauthenticated access rejection. The user confirmed their end-to-end local test
+worked successfully.
 
 **Complete when:** a representative job survives a worker restart, reports progress,
 and handles retry and cancellation without duplicating published results.

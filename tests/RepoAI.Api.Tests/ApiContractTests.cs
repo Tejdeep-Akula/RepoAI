@@ -5,7 +5,11 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using RepoAI.Application.Jobs;
+using RepoAI.Domain.Entities;
+using RepoAI.Infrastructure.Persistence;
 using Xunit;
 
 namespace RepoAI.Api.Tests;
@@ -76,6 +80,103 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task BackgroundJobEndpointsRequireAuthentication()
+    {
+        var projectId = Guid.NewGuid();
+        var jobId = Guid.NewGuid();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync($"/api/v1/projects/{projectId}/jobs/demo", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/jobs/{jobId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.DeleteAsync($"/api/v1/jobs/{jobId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DurableJobsSupportIdempotentEnqueueProgressRetryCancellationAndRecovery()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RepoAIDbContext>();
+        var repository = scope.ServiceProvider.GetRequiredService<IBackgroundJobRepository>();
+        var owner = new User
+        {
+            GoogleSubject = $"job-test-{Guid.NewGuid():N}",
+            DisplayName = "Background job test"
+        };
+        var project = new Project
+        {
+            OwnerId = owner.Id,
+            Name = "Background job test project",
+            RepositoryUrl = "https://github.com/repoai-tests/background-jobs"
+        };
+        dbContext.Users.Add(owner);
+        dbContext.Projects.Add(project);
+        await dbContext.SaveChangesAsync();
+
+        var kind = $"test.lifecycle.{Guid.NewGuid():N}";
+        var idempotencyKey = Guid.NewGuid().ToString("N");
+        var service = new BackgroundJobService(repository);
+        var first = await service.EnqueueAsync(project.Id, kind, new { value = "one" }, idempotencyKey, default);
+        var repeated = await service.EnqueueAsync(project.Id, kind, new { value = "two" }, idempotencyKey, default);
+        Assert.Equal(first.Id, repeated.Id);
+
+        var claimed = await repository.ClaimNextAsync("test-worker-cancel", [kind], TimeSpan.FromSeconds(30), default);
+        Assert.NotNull(claimed);
+        Assert.Equal(BackgroundJobStatus.Running, claimed.Status);
+        Assert.Equal(1, claimed.AttemptCount);
+        Assert.True(await repository.ReportProgressAndRenewLeaseAsync(
+            claimed.Id, "test-worker-cancel", 40, TimeSpan.FromSeconds(30), default));
+
+        var cancellation = await repository.RequestCancellationAsync(owner.Id, claimed.Id, default);
+        Assert.Equal(BackgroundJobStatus.CancellationRequested, cancellation?.Status);
+        Assert.False(await repository.ReportProgressAndRenewLeaseAsync(
+            claimed.Id, "test-worker-cancel", 50, TimeSpan.FromSeconds(30), default));
+        await repository.CancelAsync(claimed.Id, "test-worker-cancel", default);
+        Assert.Equal(BackgroundJobStatus.Cancelled, claimed.Status);
+
+        var recoveryKey = Guid.NewGuid().ToString("N");
+        var recoveryJob = await service.EnqueueAsync(project.Id, kind, new { value = "restart" }, recoveryKey, default);
+        var crashedWorkerClaim = await repository.ClaimNextAsync(
+            "test-worker-crashed",
+            [kind],
+            TimeSpan.FromMilliseconds(-1),
+            default);
+        Assert.NotNull(crashedWorkerClaim);
+        Assert.Equal(recoveryJob.Id, crashedWorkerClaim.Id);
+        await repository.RecoverExpiredLeasesAsync(default);
+        Assert.Equal(BackgroundJobStatus.RetryWaiting, crashedWorkerClaim.Status);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+        var retryClaim = await repository.ClaimNextAsync(
+            "test-worker-retry",
+            [kind],
+            TimeSpan.FromSeconds(30),
+            default);
+        Assert.NotNull(retryClaim);
+        Assert.Equal(2, retryClaim.AttemptCount);
+        await repository.FailAsync(retryClaim.Id, "test-worker-retry", "test_failure", TimeSpan.Zero, default);
+        Assert.Equal(BackgroundJobStatus.RetryWaiting, retryClaim.Status);
+
+        var finalClaim = await repository.ClaimNextAsync(
+            "test-worker-final",
+            [kind],
+            TimeSpan.FromSeconds(30),
+            default);
+        Assert.NotNull(finalClaim);
+        Assert.Equal(3, finalClaim.AttemptCount);
+        await repository.CompleteAsync(finalClaim.Id, "test-worker-final", default);
+        Assert.Equal(BackgroundJobStatus.Succeeded, finalClaim.Status);
+        Assert.Equal(100, finalClaim.ProgressPercentage);
+
+        dbContext.BackgroundJobs.RemoveRange(
+            await dbContext.BackgroundJobs.Where(job => job.ProjectId == project.Id).ToListAsync());
+        dbContext.Projects.Remove(project);
+        dbContext.Users.Remove(owner);
+        await dbContext.SaveChangesAsync();
+    }
+
+    [Fact]
     public async Task SwaggerAndOpenApiDescribeSuccessAndValidationErrors()
     {
         Assert.Contains("swagger-ui", await client.GetStringAsync("/swagger/index.html"));
@@ -85,6 +186,12 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
         Assert.True(operation.GetProperty("responses").TryGetProperty("400", out _));
         Assert.True(operation.TryGetProperty("requestBody", out _));
+
+        var jobPaths = document.GetProperty("paths");
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/jobs/demo", out _));
+        var jobStatus = jobPaths.GetProperty("/api/v1/jobs/{jobId}");
+        Assert.True(jobStatus.TryGetProperty("get", out _));
+        Assert.True(jobStatus.TryGetProperty("delete", out _));
     }
 
     [Fact]

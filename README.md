@@ -19,6 +19,7 @@ RepoAI/
     RepoAI.Application/
     RepoAI.Domain/
     RepoAI.Infrastructure/
+    RepoAI.Worker/          .NET background job worker
   frontend/               React + TypeScript browser application
   tests/
     RepoAI.Api.Tests/
@@ -32,6 +33,7 @@ RepoAI/
 | Application | Use cases and interfaces | Domain |
 | Domain | Business entities and rules | None |
 | Infrastructure | Database, repository and model adapters | Application |
+| Worker | Durable background job processing host | Application, Infrastructure |
 | Frontend | Browser UI built with React; served/bundled by Vite | RepoAI.Api over HTTP |
 
 ## Frontend
@@ -56,8 +58,9 @@ syntax check, and indicates the Google sign-in setup status. URL validation
 checks syntax only; it does not fetch or import a repository. Google Identity
 Services now sends its ID token to the .NET sign-in endpoint; the returned
 15-minute RepoAI access token is kept in browser memory only. The Google Client
-Secret is not used. The authenticated project list and create flow are not
-connected yet.
+Secret is not used. After sign-in, the workspace lists the authenticated user's
+projects and supports creating a project with a name and repository URL. The
+JWT is sent as a bearer token only for project API calls.
 
 Local OAuth settings live in Git-ignored `frontend/.env.local` and
 `src/RepoAI.Api/appsettings.Local.json`. Restart both the Vite dev server and
@@ -233,8 +236,9 @@ docker compose ps
 The health check tests whether PostgreSQL accepts connections; it does not verify
 application tables or the application password. The local database schema and
 migration history were checked after a PostgreSQL restart with the named volume
-retained. Phase 4's Project endpoints are now in place and require a valid RepoAI
-bearer token; live Google sign-in configuration and end-to-end verification remain.
+retained. Phase 4's Project endpoints require a valid RepoAI bearer token. Phases
+4 and 5 have been verified locally with Google sign-in and the authenticated
+project UI.
 
 `docker compose stop postgres` stops the database without deleting data.
 `docker compose down` removes the project's containers/network but retains its
@@ -243,7 +247,7 @@ named volume. **Do not add `-v` unless you intend to delete the database volume.
 References: [official PostgreSQL image](https://hub.docker.com/_/postgres),
 [Compose environment interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
 
-## Phase 4: Google sign-in and access control (in progress)
+## Phase 4: Google sign-in and access control (complete)
 
 `POST /api/v1/auth/google` accepts a Google ID token, validates it for the
 configured Google client ID, finds or creates the local user by the verified
@@ -292,11 +296,39 @@ Development, provide the corresponding settings through the deployment's secure
 configuration mechanism (environment variable names use double underscores,
 such as `Authentication__Jwt__SigningKey`).
 
-No browser sign-in client or Google OAuth client has been configured in this
-repository yet, so end-to-end sign-in requires that setup. Until valid
-credentials are configured, project routes reject requests without a valid
-bearer token. “Chat sessions” remain saved conversations, not server-side
-login-session records.
+Local Google OAuth settings are in Git-ignored
+`src/RepoAI.Api/appsettings.Local.json` and `frontend/.env.local` files. Project
+routes reject requests without a valid bearer token. “Chat sessions” remain
+saved conversations, not server-side login-session records.
+
+## Phase 6: Durable background processing (in progress)
+
+The API and a separate .NET Worker share a PostgreSQL-backed job queue. Start
+the API (which applies EF migrations) and Worker from the repository root in
+separate terminals:
+
+```sh
+dotnet run --project src/RepoAI.Api --launch-profile http
+dotnet run --project src/RepoAI.Worker
+```
+
+The Worker reads the local database connection string from the API's
+`appsettings.json` / Git-ignored `appsettings.Local.json`, or from
+`ConnectionStrings__RepoAI`. The development-only demo endpoint queues a
+progress-reporting job for one of the signed-in user's projects:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/projects/{projectId}/jobs/demo` | Queue a development-only progress job; `Idempotency-Key` prevents duplicate enqueue |
+| `GET /api/v1/jobs/{jobId}` | Read job status, progress and attempt count |
+| `DELETE /api/v1/jobs/{jobId}` | Request cancellation |
+
+Send `{}` for a normal demo (about 10 seconds), or
+`{"failFirstAttempt": true}` to verify retry behavior. Its `demo.progress`
+handler is only a queue smoke test; it does not clone, fetch or analyze a
+repository. The API hides this endpoint outside Development. Jobs persist after
+process restarts; workers use expiring leases and PostgreSQL `SKIP LOCKED` claims
+so multiple worker processes do not claim the same row concurrently.
 
 ## Verification
 
@@ -322,7 +354,6 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 ## Later phases
 
-Phases 1–3 are complete. Phase 4's Google sign-in and owner-scoped Project API are
-implemented; local OAuth configuration and end-to-end verification remain.
-Frontend, background jobs, repository analysis, chat conversations and LTX
-integration follow the roadmap. No login-session table is introduced.
+Phases 1–5 are complete. Phase 6's durable queue and Worker host are in progress.
+Repository analysis, chat conversations and LTX integration follow the roadmap.
+No login-session table is introduced.
