@@ -6,7 +6,7 @@ step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
 Phases 1–3 are **Complete**.
-Phase 4 is **In progress**. Phases 5–13 are **Not started**.
+Phases 4 and 5 are **In progress**. Phases 6–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -121,8 +121,27 @@ projects, while unauthenticated and cross-user access are rejected.
 
 ## Phase 5 — Web application workspace
 
-Choose the frontend approach and build the initial browser experience: sign-in,
-project navigation, project creation, and clear loading and error states.
+**Status:** In progress — frontend foundation created.
+
+Use React with TypeScript for the browser UI and Vite for local development and
+production builds. The local Vite origin is pinned to `http://localhost:5173`;
+the .NET API remains at `http://localhost:5080`.
+
+**Delivered so far:** Vite React + TypeScript app in `frontend/`, strict
+development port configuration, responsive RepoAI workspace shell, API status
+indicator, and repository URL syntax validation wired to the existing API.
+Development CORS accepts only `http://localhost:5173`. Google Identity Services
+is wired to `POST /api/v1/auth/google`; the RepoAI bearer token remains in
+browser memory and is not persisted. The Google Client Secret is not used.
+Authenticated project loading and creation are not connected yet.
+
+**Verified:** frontend production build and lint pass. CORS tests cover allowed
+and disallowed origins. Google sign-in was verified locally with the API,
+PostgreSQL, and the OAuth client configured for the frontend origin.
+
+**Next:** Restart the API and Vite dev server to load local OAuth configuration,
+then verify browser sign-in. After sign-in works, connect the authenticated
+project list and creation flows.
 
 **Complete when:** an authenticated user can manage their own projects through the UI.
 

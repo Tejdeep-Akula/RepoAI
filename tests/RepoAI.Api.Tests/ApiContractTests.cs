@@ -48,6 +48,34 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task LocalFrontendCanMakeCorsRequests()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/repositories/validate");
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("http://localhost:5173",
+            Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+    }
+
+    [Fact]
+    public async Task CorsDoesNotAllowUnconfiguredOrigins()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/repositories/validate");
+        request.Headers.Add("Origin", "http://localhost:5174");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.DoesNotContain("Access-Control-Allow-Origin", response.Headers.Select(header => header.Key));
+    }
+
+    [Fact]
     public async Task SwaggerAndOpenApiDescribeSuccessAndValidationErrors()
     {
         Assert.Contains("swagger-ui", await client.GetStringAsync("/swagger/index.html"));
@@ -138,9 +166,24 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     [InlineData("/openapi/v1.json")]
     public async Task DocumentationIsNotExposedInProduction(string route)
     {
-        using var production = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
-        using var productionClient = production.CreateClient();
-        await AssertProblem(await productionClient.GetAsync(route), HttpStatusCode.NotFound, "not_found");
+        const string clientIdVariable = "Authentication__Google__ClientId";
+        const string signingKeyVariable = "Authentication__Jwt__SigningKey";
+        var originalClientId = Environment.GetEnvironmentVariable(clientIdVariable);
+        var originalSigningKey = Environment.GetEnvironmentVariable(signingKeyVariable);
+
+        try
+        {
+            Environment.SetEnvironmentVariable(clientIdVariable, "repoai-tests.example.invalid");
+            Environment.SetEnvironmentVariable(signingKeyVariable, "test-only-signing-key-with-at-least-32-bytes");
+            using var production = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production"));
+            using var productionClient = production.CreateClient();
+            await AssertProblem(await productionClient.GetAsync(route), HttpStatusCode.NotFound, "not_found");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(clientIdVariable, originalClientId);
+            Environment.SetEnvironmentVariable(signingKeyVariable, originalSigningKey);
+        }
     }
 
     private static async Task<JsonElement> AssertProblem(HttpResponseMessage response, HttpStatusCode status, string code)

@@ -19,6 +19,7 @@ RepoAI/
     RepoAI.Application/
     RepoAI.Domain/
     RepoAI.Infrastructure/
+  frontend/               React + TypeScript browser application
   tests/
     RepoAI.Api.Tests/
   RepoAI-design/
@@ -31,6 +32,37 @@ RepoAI/
 | Application | Use cases and interfaces | Domain |
 | Domain | Business entities and rules | None |
 | Infrastructure | Database, repository and model adapters | Application |
+| Frontend | Browser UI built with React; served/bundled by Vite | RepoAI.Api over HTTP |
+
+## Frontend
+
+The browser application uses React with TypeScript. Vite serves it during local
+development and builds the production static files; it is tooling, not another
+application framework. The Vite development server is pinned to
+`http://localhost:5173` so its origin stays stable for Google sign-in and API
+CORS configuration. The .NET API continues to use
+`http://localhost:5080`.
+
+From the repository root, start the frontend with:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+The initial workspace displays API availability, provides a repository URL
+syntax check, and indicates the Google sign-in setup status. URL validation
+checks syntax only; it does not fetch or import a repository. Google Identity
+Services now sends its ID token to the .NET sign-in endpoint; the returned
+15-minute RepoAI access token is kept in browser memory only. The Google Client
+Secret is not used. The authenticated project list and create flow are not
+connected yet.
+
+Local OAuth settings live in Git-ignored `frontend/.env.local` and
+`src/RepoAI.Api/appsettings.Local.json`. Restart both the Vite dev server and
+the .NET API after changing these files. To verify the production build, run
+`npm run build` from `frontend/`.
 
 The three class libraries are deliberately empty until their first approved
 features. Infrastructure can access Domain through the transitive project

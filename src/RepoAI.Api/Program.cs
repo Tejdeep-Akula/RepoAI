@@ -90,6 +90,18 @@ builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<ProjectService>();
 
 builder.Services.AddHealthChecks();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("LocalFrontend", policy =>
+        {
+            policy.WithOrigins("http://localhost:5173")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
+    });
+}
 builder.Services.AddControllers().AddJsonOptions(options =>
     options.AllowInputFormatterExceptionMessages = false);
 builder.Services.AddProblemDetails(options =>
@@ -136,6 +148,11 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors("LocalFrontend");
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
