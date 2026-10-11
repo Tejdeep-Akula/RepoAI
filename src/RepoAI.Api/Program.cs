@@ -97,6 +97,7 @@ builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
 builder.Services.AddScoped<IRepositorySnapshotRepository, RepositorySnapshotRepository>();
+builder.Services.AddScoped<IRepositoryArchitectureAnalysisRepository, RepositoryArchitectureAnalysisRepository>();
 builder.Services.AddScoped<BackgroundJobService>();
 
 builder.Services.AddHealthChecks();

@@ -105,6 +105,10 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/files")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", null)).StatusCode);
     }
 
     [Fact]
@@ -134,6 +138,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var first = await service.EnqueueAsync(project.Id, kind, new { value = "one" }, idempotencyKey, default);
         var repeated = await service.EnqueueAsync(project.Id, kind, new { value = "two" }, idempotencyKey, default);
         Assert.Equal(first.Id, repeated.Id);
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
 
         var claimed = await repository.ClaimNextAsync("test-worker-cancel", [kind], TimeSpan.FromSeconds(30), default);
         Assert.NotNull(claimed);
@@ -154,7 +159,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var crashedWorkerClaim = await repository.ClaimNextAsync(
             "test-worker-crashed",
             [kind],
-            TimeSpan.FromMilliseconds(-1),
+            TimeSpan.FromSeconds(-1),
             default);
         Assert.NotNull(crashedWorkerClaim);
         Assert.Equal(recoveryJob.Id, crashedWorkerClaim.Id);
@@ -221,6 +226,8 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/imports", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/files", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", out _));
 
         var protectedOperation = jobPaths.GetProperty("/api/v1/projects/{projectId}").GetProperty("get");
         Assert.Contains(protectedOperation.GetProperty("security").EnumerateArray(), requirement =>

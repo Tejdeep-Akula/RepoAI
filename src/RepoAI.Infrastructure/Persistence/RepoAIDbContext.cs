@@ -15,6 +15,8 @@ public sealed class RepoAIDbContext(DbContextOptions<RepoAIDbContext> options) :
 
     public DbSet<RepositoryFile> RepositoryFiles => Set<RepositoryFile>();
 
+    public DbSet<RepositoryArchitectureAnalysis> RepositoryArchitectureAnalyses => Set<RepositoryArchitectureAnalysis>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepoAIDbContext).Assembly);

@@ -5,8 +5,8 @@ describe the planned order; they do not authorize implementation. Before each
 step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
-Phases 1–6 are **Complete**.
-Phase 7 is **In progress**. Phases 8–13 are **Not started**.
+Phases 1–7 are **Complete** (Phase 7 includes the extended static architecture analysis scope).
+Phases 8–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -164,7 +164,7 @@ and handles retry and cancellation without duplicating published results.
 
 ## Phase 7 — Repository import and understanding
 
-**Status:** In progress — first slice imports public GitHub snapshots and inventories files.
+**Status:** Complete (extended scope) — repository import, manifest/deployment graph, and best-effort source relationship analysis are delivered and reviewed.
 
 The initial provider is public GitHub, with no language allowlist. Every archive
 file path is inventoried; file types/languages are detected best-effort, text is
@@ -180,18 +180,50 @@ archive, guard against redirects and unsafe archive paths, and persist
 imports, list snapshots and return paginated file metadata. Small text files are
 stored under the ignored local `data/repository-content` directory; raw content is
 not stored in PostgreSQL or exposed by an API endpoint. Binary file content is not
-stored. The frontend does not yet expose import controls.
+stored. The authenticated project UI can queue an import, poll and display job
+progress/retry/failure details, list snapshots, and browse paginated file metadata.
+The owner-scoped architecture endpoint and UI provide a static overview of
+component folders, detected languages/formats, likely entry points, and
+build/dependency manifests, with repository paths as evidence. Each report finding
+labels observations separately from inferences and includes its method, confidence,
+and source references. A parser registry reads stored manifest content and extracts
+declared dependencies from npm/Composer JSON, Python requirements/TOML, Go modules,
+Cargo TOML, Maven XML, and .NET project XML; line references are included when
+available. These declarations are not treated as proof of runtime use.
+The frontend visualizes package declarations, .NET project references, Compose
+startup dependencies, and source-code references as typed edges with file/line
+evidence. Its source-code relationship section surfaces HTTP, database-provider,
+and message-broker findings with confidence and evidence paths/lines. C# receives Roslyn syntax-tree parsing. JavaScript/TypeScript, Python,
+Go, Java, Rust, Ruby, PHP, C/C++, Scala, Haskell, Julia, Agda, and QL use
+Tree-sitter syntax trees for selected HTTP, database, and broker patterns; F#,
+VB, Kotlin, and Swift still use a conservative line-based fallback. Source edges
+are labeled as inferences, distinct from manifest observations. The typed
+directed graph is stored inside the versioned report JSON in PostgreSQL, not in a
+graph database.
+Analysis is queued as a durable Worker job; versioned JSON reports are persisted
+against the immutable snapshot commit and retrieved after job completion.
 
-**Verified:** solution build succeeds with zero warnings/errors; all 43 tests pass,
+**Verified:** solution build succeeds with zero warnings/errors; all 59 tests pass,
 including mocked GitHub commit pinning, archive traversal rejection, file
-classification, authenticated endpoint checks, and API contract coverage. The
-runtime migration is applied to the local PostgreSQL database.
+classification, static architecture analysis, authenticated endpoint checks, and
+API contract coverage. The frontend production build succeeds and lint reports no
+warnings. The runtime migration creates `repository_architecture_reports`. The user
+reviewed the integrated frontend and confirmed it is working as expected.
 
-**Next:** add the browser workflow for queuing imports and browsing snapshot file
-inventories; then begin language-independent project/dependency analysis.
+**Limitations:** dependency extraction covers supported manifest formats and
+reports declarations only. Compose `depends_on` reports declared startup ordering,
+not actual network traffic or business-level calls. Syntax parsers recognize
+selected syntax patterns but do not resolve symbols; fallback languages use
+best-effort lexical matches. Both may miss dynamic URLs, indirect calls, wrappers,
+and unsupported library patterns. These are source references, not
+runtime-observed calls, and the result is not a complete call graph or data-flow
+trace. Unsupported deployment manifests may not be parsed.
 
-**Complete when:** a supported repository produces an inspectable architecture
-overview with source references and clearly stated analysis limitations.
+**Completion scope:** supported repositories produce an inspectable architecture
+graph with evidence-backed project, package, deployment, HTTP, messaging, and
+database relationships, clearly distinguished from runtime-observed behavior.
+This does not claim a complete call graph, universal language-level semantic
+analysis, or proof of runtime behavior; see the limitations above.
 
 ## Phase 8 — Open-model integration and chat conversations
 

@@ -336,7 +336,7 @@ diagnostics. Failed jobs also retain a safe `failureMessage` alongside
 `failureCode`; read it from `GET /api/v1/jobs/{jobId}`. Stack traces remain in
 the Worker console and are not returned by the API.
 
-## Phase 7: Public GitHub import and file inventory (in progress)
+## Phase 7: Public GitHub import and architecture overview (extended)
 
 Repository imports currently support public `github.com` owner/repository URLs.
 The API queues imports as durable jobs. The Worker resolves the requested ref—or
@@ -350,6 +350,8 @@ repository code is never executed.
 | `GET /api/v1/jobs/{jobId}` | Poll import status and progress |
 | `GET /api/v1/projects/{projectId}/snapshots` | List the project's imported commit snapshots |
 | `GET /api/v1/projects/{projectId}/snapshots/{snapshotId}/files?page=1&pageSize=100` | Browse the snapshot's paginated file inventory |
+| `POST /api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis` | Queue static architecture analysis; returns a durable job |
+| `GET /api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture` | Retrieve the saved architecture report after analysis succeeds |
 
 All endpoints require the signed-in user's bearer token and enforce project
 ownership. The API accepts imports only for public GitHub repository URLs; other
@@ -368,8 +370,31 @@ Defaults are 100 MiB compressed archive, 500 MiB expanded contents, 20,000 files
 and 5 MiB per stored text file. The Worker accepts overrides through
 `RepositoryImport__StorageRoot`, `RepositoryImport__MaxArchiveBytes`,
 `RepositoryImport__MaxExpandedBytes`, `RepositoryImport__MaxTextFileBytes`, and
-`RepositoryImport__MaxFiles`. The current slice provides import and inventory
-APIs; the browser import workflow and architecture analysis are subsequent steps.
+`RepositoryImport__MaxFiles`. The browser project workflow can queue an import,
+poll job status and progress, show retry/failure details, list snapshots, and browse
+paginated file metadata. Its architecture overview groups files by component
+folders (including project folders below common `src`, `apps`, and `services`
+directories), summarizes detected languages/formats, and highlights likely entry
+points and build/dependency manifests with paths as evidence. Supported
+manifests are parsed for declared dependencies across npm, Composer, Python,
+Go, Cargo, Maven, and .NET project formats. These are observations about what a
+manifest declares, not proof of runtime use. Each finding is labeled as an
+observation or inference, includes method and confidence, and cites source paths,
+with line references where the format parser can provide them.
+The report also visualizes component-to-package declarations and .NET project
+references as typed graph edges, each retaining its manifest evidence. It parses
+Docker Compose `depends_on` declarations into service nodes and startup dependency
+edges. C# source is parsed with Roslyn syntax trees. JavaScript/TypeScript, Python,
+Go, Java, Rust, Ruby, PHP, C/C++, Scala, Haskell, Julia, Agda, and QL use
+Tree-sitter syntax trees for selected HTTP, database, and broker patterns; F#,
+VB, Kotlin, and Swift still use the line-based fallback. Each edge carries its
+type, confidence, and evidence path/line. The directed, typed node/edge graph is
+serialized in the versioned architecture report in PostgreSQL, not stored in a
+separate graph database. Static relationships are not proof that code executes or
+traffic occurs. Dynamic URLs, indirect calls, wrappers, and unsupported patterns
+can be missed; this is not a complete call graph or runtime data-flow trace.
+Analysis runs as a durable Worker job; its versioned JSON report is saved against
+the immutable snapshot commit and can be fetched after job completion.
 
 ## Verification
 
@@ -395,6 +420,7 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 ## Later phases
 
-Phases 1–6 are complete. Phase 7's public GitHub import and file inventory are in
-progress. Architecture analysis, chat conversations and LTX integration follow
-the roadmap. No login-session table is introduced.
+Phases 1–7 are complete, including the extended best-effort static architecture
+analysis. Open-model integration and repository chat follow, then storyboarding
+and LTX video generation. The architecture graph is evidence-backed static
+analysis, not a complete runtime call graph. No login-session table is introduced.

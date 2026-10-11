@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import ProjectImportPanel from './components/ProjectImportPanel'
 import './App.css'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5080')
@@ -136,6 +137,14 @@ function App() {
   const [googleScriptError, setGoogleScriptError] = useState('')
   const [googleButtonContainer, setGoogleButtonContainer] = useState<HTMLDivElement | null>(null)
   const googleIdentityInitialized = useRef(false)
+
+  const handleExpiredToken = useCallback(() => {
+    setSignInError('Your RepoAI access token expired. Please sign in again.')
+    setProjects([])
+    setProjectLoadStatus('idle')
+    setIsProjectFormOpen(false)
+    setSignIn(null)
+  }, [])
 
   const signInWithGoogle = useCallback(async (idToken: string) => {
     setSignInError('')
@@ -551,13 +560,20 @@ function App() {
               {signIn && projectLoadStatus === 'loaded' && projects.length > 0 && (
                 <ul className="project-list" aria-label="Your projects">
                   {projects.map((project) => (
-                    <li className="project-list-item" key={project.id}>
-                      <span className="project-folder-icon"><Icon name="folder" /></span>
-                      <span className="project-list-copy">
-                        <strong>{project.name}</strong>
-                        <a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a>
-                      </span>
-                      <time dateTime={project.createdAtUtc}>{new Date(project.createdAtUtc).toLocaleDateString()}</time>
+                    <li className="project-list-item project-card" key={project.id}>
+                      <div className="project-list-item-heading">
+                        <span className="project-folder-icon"><Icon name="folder" /></span>
+                        <span className="project-list-copy">
+                          <strong>{project.name}</strong>
+                          <a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a>
+                        </span>
+                        <time dateTime={project.createdAtUtc}>{new Date(project.createdAtUtc).toLocaleDateString()}</time>
+                      </div>
+                      <ProjectImportPanel
+                        projectId={project.id}
+                        authorization={`${signIn.tokenType} ${signIn.accessToken}`}
+                        onUnauthorized={handleExpiredToken}
+                      />
                     </li>
                   ))}
                 </ul>

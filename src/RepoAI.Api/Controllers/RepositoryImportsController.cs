@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using RepoAI.Api.Contracts;
@@ -16,8 +17,11 @@ namespace RepoAI.Api.Controllers;
 public sealed class RepositoryImportsController(
     BackgroundJobService jobService,
     ProjectService projectService,
-    IRepositorySnapshotRepository snapshotRepository) : ControllerBase
+    IRepositorySnapshotRepository snapshotRepository,
+    IRepositoryArchitectureAnalysisRepository analysisRepository) : ControllerBase
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [HttpPost("imports")]
     [Consumes("application/json")]
     [EndpointSummary("Queue an import of a public GitHub repository")]
@@ -159,6 +163,158 @@ public sealed class RepositoryImportsController(
                 file.SkipReason)).ToArray()));
     }
 
+    [HttpPost("snapshots/{snapshotId:guid}/analysis")]
+    [EndpointSummary("Queue static architecture analysis for an imported snapshot")]
+    [ProducesResponseType<BackgroundJobResponse>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BackgroundJobResponse>> CreateArchitectureAnalysis(
+        Guid projectId,
+        Guid snapshotId,
+        [FromHeader(Name = "Idempotency-Key")] string? requestIdempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var ownerId))
+        {
+            return Unauthorized();
+        }
+
+        var snapshot = await snapshotRepository.FindForProjectOwnerAsync(
+            ownerId,
+            projectId,
+            snapshotId,
+            cancellationToken);
+        if (snapshot is null)
+        {
+            return NotFound();
+        }
+
+        var idempotencyKey = requestIdempotencyKey?.Trim();
+        if (string.IsNullOrEmpty(idempotencyKey))
+        {
+            idempotencyKey = null;
+        }
+        if (idempotencyKey is { Length: > 128 })
+        {
+            ModelState.AddModelError("Idempotency-Key", "The idempotency key cannot exceed 128 characters.");
+            return ValidationProblem(ModelState);
+        }
+
+        var job = await jobService.EnqueueAsync(
+            projectId,
+            BackgroundJobKinds.RepositoryAnalysis,
+            new RepositoryAnalysisJobPayload(snapshotId),
+            idempotencyKey,
+            cancellationToken);
+        var response = Map(job);
+        return Accepted($"/api/v1/jobs/{job.Id}", response);
+    }
+
+    [HttpGet("snapshots/{snapshotId:guid}/architecture")]
+    [EndpointSummary("Get the saved architecture analysis for an imported snapshot")]
+    [ProducesResponseType<RepositoryArchitectureResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RepositoryArchitectureResponse>> GetArchitecture(
+        Guid projectId,
+        Guid snapshotId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var ownerId))
+        {
+            return Unauthorized();
+        }
+
+        var snapshot = await snapshotRepository.FindForProjectOwnerAsync(
+            ownerId,
+            projectId,
+            snapshotId,
+            cancellationToken);
+        if (snapshot is null)
+        {
+            return NotFound();
+        }
+
+        var analysis = await analysisRepository.FindForOwnerAsync(
+            ownerId,
+            projectId,
+            snapshotId,
+            cancellationToken);
+        if (analysis is null)
+        {
+            return NotFound();
+        }
+
+        var report = JsonSerializer.Deserialize<RepositoryArchitectureReport>(analysis.ReportJson, JsonOptions)
+            ?? throw new InvalidOperationException("The saved repository architecture report is invalid.");
+        return Ok(new RepositoryArchitectureResponse(
+            snapshot.Id,
+            analysis.CommitSha,
+            analysis.AnalyzerVersion,
+            analysis.GeneratedAtUtc,
+            report.Summary,
+            report.LanguagesAndFormats.Select(Map).ToArray(),
+            report.Components.Select(component => new RepositoryArchitectureComponentResponse(
+                component.Name,
+                component.Path,
+                component.FileCount,
+                component.LanguagesAndFormats.Select(Map).ToArray(),
+                component.SourcePaths)).ToArray(),
+            report.LikelyEntryPoints.Select(evidence => new RepositoryArchitectureEvidenceResponse(
+                evidence.Path,
+                evidence.Reason)).ToArray(),
+            report.BuildAndDependencyFiles.Select(evidence => new RepositoryArchitectureEvidenceResponse(
+                evidence.Path,
+                evidence.Reason)).ToArray(),
+            report.Limitations,
+            report.Findings.Select(finding => new RepositoryArchitectureFindingResponse(
+                finding.Category,
+                finding.Claim,
+                finding.Kind.ToString(),
+                finding.Confidence.ToString(),
+                finding.Method,
+                finding.Evidence.Select(reference => new RepositoryArchitectureSourceReferenceResponse(
+                    reference.Path,
+                    reference.StartLine,
+                    reference.EndLine)).ToArray())).ToArray(),
+            report.Graph is null
+                ? null
+                : new RepositoryArchitectureGraphResponse(
+                    report.Graph.Nodes.Select(node => new RepositoryArchitectureGraphNodeResponse(
+                        node.Id,
+                        node.Label,
+                        node.Kind,
+                        node.Detail,
+                        node.Path)).ToArray(),
+                    report.Graph.Edges.Select(edge => new RepositoryArchitectureGraphEdgeResponse(
+                        edge.Id,
+                        edge.SourceNodeId,
+                        edge.TargetNodeId,
+                        edge.RelationshipType,
+                        edge.Evidence.Select(reference => new RepositoryArchitectureSourceReferenceResponse(
+                            reference.Path,
+                            reference.StartLine,
+                            reference.EndLine)).ToArray(),
+                        edge.Confidence)).ToArray(),
+                    report.Graph.IsTruncated,
+                    report.Graph.OmittedEdgeCount)));
+    }
+
+    private static BackgroundJobResponse Map(BackgroundJob job) => new(
+        job.Id,
+        job.ProjectId,
+        job.Kind,
+        job.Status.ToString(),
+        job.ProgressPercentage,
+        job.AttemptCount,
+        job.MaxAttempts,
+        job.CreatedAtUtc,
+        job.StartedAtUtc,
+        job.CompletedAtUtc,
+        job.FailureCode,
+        job.FailureMessage);
+
     private bool TryGetCurrentUserId(out Guid userId)
     {
         var subject = User.FindFirst("sub")?.Value;
@@ -177,4 +333,7 @@ public sealed class RepositoryImportsController(
         snapshot.BinaryFileCount,
         snapshot.SkippedFileCount,
         snapshot.ImportedAtUtc);
+
+    private static RepositoryArchitectureLanguageResponse Map(RepositoryArchitectureLanguage language) =>
+        new(language.Name, language.FileCount);
 }

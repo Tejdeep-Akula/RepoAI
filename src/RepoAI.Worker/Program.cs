@@ -32,8 +32,19 @@ builder.Services.AddDbContext<RepoAIDbContext>(options => options.UseNpgsql(conn
 builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
 builder.Services.AddScoped<IBackgroundJobHandler, DemoProgressJobHandler>();
 builder.Services.AddScoped<IBackgroundJobHandler, RepositoryImportJobHandler>();
+builder.Services.AddScoped<IBackgroundJobHandler, RepositoryAnalysisJobHandler>();
 builder.Services.AddScoped<IRepositoryImportService, GitHubRepositoryImportService>();
 builder.Services.AddScoped<IRepositoryContentStore, LocalRepositoryContentStore>();
+builder.Services.AddScoped<IRepositoryManifestDependencyParser, RepositoryManifestDependencyParser>();
+builder.Services.AddScoped<RepositoryDependencyExtractor>();
+builder.Services.AddScoped<IRepositoryServiceTopologyParser, DockerComposeTopologyParser>();
+builder.Services.AddScoped<IRepositoryServiceTopologyParser, CSharpSourceRelationshipParser>();
+builder.Services.AddScoped<IRepositoryServiceTopologyParser, TreeSitterSourceRelationshipParser>();
+builder.Services.AddScoped<IRepositoryServiceTopologyParser, SourceCodeRelationshipParser>();
+builder.Services.AddScoped<RepositoryServiceTopologyExtractor>();
+builder.Services.AddScoped<IRepositorySnapshotRepository, RepositorySnapshotRepository>();
+builder.Services.AddScoped<IRepositoryArchitectureAnalysisRepository, RepositoryArchitectureAnalysisRepository>();
+builder.Services.AddSingleton<RepositoryArchitectureAnalyzer>();
 builder.Services.Configure<RepositoryImportOptions>(builder.Configuration.GetSection("RepositoryImport"));
 builder.Services.PostConfigure<RepositoryImportOptions>(options =>
 {

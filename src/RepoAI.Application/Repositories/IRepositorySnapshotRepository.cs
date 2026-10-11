@@ -4,6 +4,11 @@ namespace RepoAI.Application.Repositories;
 
 public interface IRepositorySnapshotRepository
 {
+    Task<RepositorySnapshot?> FindForProjectAsync(
+        Guid projectId,
+        Guid snapshotId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<RepositorySnapshot>> ListForProjectOwnerAsync(
         Guid ownerId,
         Guid projectId,
@@ -19,5 +24,9 @@ public interface IRepositorySnapshotRepository
         Guid snapshotId,
         int offset,
         int pageSize,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RepositoryFile>> ListAllFilesAsync(
+        Guid snapshotId,
         CancellationToken cancellationToken);
 }
