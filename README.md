@@ -62,9 +62,10 @@ Secret is not used. After sign-in, the workspace provides separate Repositories,
 Conversations, and Videos destinations. Repositories open an individual
 repository workspace with overview, analysis, conversations, and video sections.
 Saved conversations are grouped by repository; selecting one opens a dedicated
-chat page. The video pages are navigation placeholders until storyboard and video
-generation are implemented. Project creation is available from the Repositories
-page. The JWT is sent as a bearer token only for project API calls.
+chat page. Each repository's Videos workspace can generate and review an
+evidence-grounded storyboard from a completed architecture analysis. Project
+creation is available from the Repositories page. The JWT is sent as a bearer
+token only for project API calls.
 
 Local OAuth settings live in Git-ignored `frontend/.env.local` and
 `src/RepoAI.Api/appsettings.Local.json`. Restart both the Vite dev server and
@@ -441,6 +442,23 @@ Retrieval is lexical and bounded (candidate/file/byte/chunk limits), so answers
 can miss relevant code; citations should be checked against source. Repository
 files are never executed by this integration.
 
+## Phase 9: Evidence-grounded storyboards
+
+For an imported snapshot with completed architecture analysis, open that
+repository's **Videos** workspace and select **Generate storyboard**. The API
+enqueues a durable `repository.storyboard` job; the Worker sends the saved
+architecture report and a bounded list of source citations to the configured
+Ollama model. It does not upload every source file. Generated scene evidence is
+validated against the supplied citation whitelist before the storyboard is
+saved in PostgreSQL, tied to the immutable snapshot and commit. The UI displays
+scene purpose, narration, animation directions, duration, and file/line
+citations, and supports regeneration.
+
+This phase prepares and reviews the explanation plan; it does not render video.
+Model-generated text still needs human review. Run the API and Worker, and ensure
+the configured Ollama endpoint and model are available for generation. Database
+migrations apply at application startup.
+
 ## Verification
 
 ```sh
@@ -465,7 +483,7 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 ## Later phases
 
-Phases 1–8 are complete, including the extended best-effort static architecture
-analysis and Ollama-backed, evidence-grounded repository chat. Storyboarding and
-LTX video generation follow. The architecture graph is evidence-backed static
+Phases 1–9 are complete, including the extended best-effort static architecture
+analysis, Ollama-backed evidence-grounded repository chat, and storyboard review.
+LTX video generation follows. The architecture graph is evidence-backed static
 analysis, not a complete runtime call graph. No login-session table is introduced.

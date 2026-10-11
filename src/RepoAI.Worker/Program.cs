@@ -4,8 +4,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using OllamaSharp;
 using RepoAI.Application.Jobs;
 using RepoAI.Application.Repositories;
+using RepoAI.Application.Storyboards;
 using RepoAI.Infrastructure.Persistence;
 using RepoAI.Infrastructure.Repositories;
 using RepoAI.Worker.Jobs;
@@ -33,6 +37,7 @@ builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
 builder.Services.AddScoped<IBackgroundJobHandler, DemoProgressJobHandler>();
 builder.Services.AddScoped<IBackgroundJobHandler, RepositoryImportJobHandler>();
 builder.Services.AddScoped<IBackgroundJobHandler, RepositoryAnalysisJobHandler>();
+builder.Services.AddScoped<IBackgroundJobHandler, RepositoryStoryboardJobHandler>();
 builder.Services.AddScoped<IRepositoryImportService, GitHubRepositoryImportService>();
 builder.Services.AddScoped<IRepositoryContentStore, LocalRepositoryContentStore>();
 builder.Services.AddScoped<IRepositoryManifestDependencyParser, RepositoryManifestDependencyParser>();
@@ -44,7 +49,18 @@ builder.Services.AddScoped<IRepositoryServiceTopologyParser, SourceCodeRelations
 builder.Services.AddScoped<RepositoryServiceTopologyExtractor>();
 builder.Services.AddScoped<IRepositorySnapshotRepository, RepositorySnapshotRepository>();
 builder.Services.AddScoped<IRepositoryArchitectureAnalysisRepository, RepositoryArchitectureAnalysisRepository>();
+builder.Services.AddScoped<IRepositoryStoryboardRepository, RepositoryStoryboardRepository>();
+builder.Services.AddScoped<IRepositoryStoryboardGenerator, OllamaRepositoryStoryboardGenerator>();
 builder.Services.AddSingleton<RepositoryArchitectureAnalyzer>();
+builder.Services.Configure<OllamaChatOptions>(builder.Configuration.GetSection("Chat:Ollama"));
+builder.Services.AddSingleton<IChatClient>(services =>
+{
+    var options = services.GetRequiredService<IOptions<OllamaChatOptions>>().Value;
+    if (!Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)
+        || endpoint.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(options.Model))
+        throw new InvalidOperationException("Configure a valid Chat:Ollama endpoint and model for storyboard generation.");
+    return new OllamaApiClient(endpoint, options.Model);
+});
 builder.Services.Configure<RepositoryImportOptions>(builder.Configuration.GetSection("RepositoryImport"));
 builder.Services.PostConfigure<RepositoryImportOptions>(options =>
 {

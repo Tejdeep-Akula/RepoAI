@@ -3,6 +3,7 @@ extern alias Worker;
 using System.Text.Json;
 using RepoAI.Application.Jobs;
 using RepoAI.Application.Repositories;
+using RepoAI.Application.Storyboards;
 using RepoAI.Domain.Entities;
 using Worker::RepoAI.Worker.Jobs;
 using Xunit;
@@ -133,6 +134,54 @@ public sealed class BackgroundJobHandlerTests
         Assert.Contains(dependencyFinding.Evidence, evidence => evidence.Path == "web/package.json");
     }
 
+    [Fact]
+    public async Task StoryboardHandlerUsesSavedArchitectureAndPersistsSnapshotBoundDraft()
+    {
+        var projectId = Guid.NewGuid();
+        var snapshot = new RepositorySnapshot
+        {
+            Id = Guid.NewGuid(), ProjectId = projectId,
+            RepositoryUrl = "https://github.com/acme/sample",
+            CommitSha = "0123456789abcdef0123456789abcdef01234567",
+            ResolvedRef = "main", DefaultBranch = "main"
+        };
+        var report = new RepositoryArchitectureReport(
+            "A small API service.", [], [], [], [], [],
+            [new RepositoryArchitectureFinding("entry_point", "Program configures the web application.",
+                RepositoryArchitectureFindingKind.Observation, RepositoryArchitectureConfidence.High,
+                "source", [new RepositoryArchitectureSourceReference("src/Program.cs", 1, 8)])]);
+        var analyses = new FakeArchitectureAnalysisRepository
+        {
+            SavedAnalysis = new RepositoryArchitectureAnalysis
+            {
+                SnapshotId = snapshot.Id, CommitSha = snapshot.CommitSha,
+                AnalyzerVersion = "test", ReportJson = JsonSerializer.Serialize(report,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web))
+            }
+        };
+        var generator = new FakeStoryboardGenerator();
+        var storyboardRepository = new FakeStoryboardRepository();
+        var handler = new RepositoryStoryboardJobHandler(
+            new FakeSnapshotRepository(snapshot, []), analyses, storyboardRepository, generator,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<RepositoryStoryboardJobHandler>.Instance);
+        var context = new RecordingExecutionContext();
+        var job = new BackgroundJob
+        {
+            ProjectId = projectId, Kind = BackgroundJobKinds.RepositoryStoryboard,
+            PayloadJson = JsonSerializer.Serialize(new RepositoryStoryboardJobPayload(snapshot.Id),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        };
+
+        await handler.ExecuteAsync(job, context, CancellationToken.None);
+
+        Assert.Equal([10, 45, 90], context.ProgressValues);
+        Assert.Contains(generator.Input!.Evidence, item => item.Path == "src/Program.cs" && item.StartLine == 1);
+        Assert.Equal(snapshot.Id, storyboardRepository.Saved!.SnapshotId);
+        Assert.Equal(snapshot.CommitSha, storyboardRepository.Saved.CommitSha);
+        Assert.Equal("fake-model", storyboardRepository.Saved.Model);
+        Assert.Contains("src/Program.cs", storyboardRepository.Saved.StoryboardJson);
+    }
+
     [Theory]
     [InlineData("package.json", "{\"dependencies\":{\"react\":\"^19\"}}", "react", "npm")]
     [InlineData("requirements.txt", "fastapi>=0.100\n", "fastapi", "Python")]
@@ -204,7 +253,7 @@ public sealed class BackgroundJobHandlerTests
 
     private sealed class FakeArchitectureAnalysisRepository : IRepositoryArchitectureAnalysisRepository
     {
-        public RepositoryArchitectureAnalysis? SavedAnalysis { get; private set; }
+        public RepositoryArchitectureAnalysis? SavedAnalysis { get; set; }
 
         public Task SaveAsync(RepositoryArchitectureAnalysis analysis, CancellationToken cancellationToken)
         {
@@ -217,6 +266,40 @@ public sealed class BackgroundJobHandlerTests
             Guid projectId,
             Guid snapshotId,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<RepositoryArchitectureAnalysis?> FindForSnapshotAsync(
+            Guid snapshotId,
+            CancellationToken cancellationToken) => Task.FromResult(
+                SavedAnalysis?.SnapshotId == snapshotId ? SavedAnalysis : null);
+    }
+
+    private sealed class FakeStoryboardGenerator : IRepositoryStoryboardGenerator
+    {
+        public string ModelId => "fake-model";
+        public StoryboardGenerationInput? Input { get; private set; }
+
+        public Task<RepositoryStoryboard> GenerateAsync(StoryboardGenerationInput input, CancellationToken cancellationToken)
+        {
+            Input = input;
+            var scene = new RepositoryStoryboardScene(1, "Entry point", "Introduce the app", "The app starts here.",
+                "Animate the startup sequence.", 10, [new RepositoryArchitectureSourceReference("src/Program.cs", 1, 8)]);
+            return Task.FromResult(new RepositoryStoryboard("Sample walkthrough", "An API tour.",
+                scene.Narration, [scene]));
+        }
+    }
+
+    private sealed class FakeStoryboardRepository : IRepositoryStoryboardRepository
+    {
+        public RepositoryStoryboardDocument? Saved { get; private set; }
+        public Task SaveAsync(RepositoryStoryboardDocument storyboard, CancellationToken cancellationToken)
+        {
+            Saved = storyboard;
+            return Task.CompletedTask;
+        }
+        public Task<RepositoryStoryboardDocument?> FindForSnapshotAsync(Guid snapshotId, CancellationToken cancellationToken) =>
+            Task.FromResult<RepositoryStoryboardDocument?>(null);
+        public Task<RepositoryStoryboardDocument?> FindForOwnerAsync(Guid ownerId, Guid projectId, Guid snapshotId, CancellationToken cancellationToken) =>
+            Task.FromResult<RepositoryStoryboardDocument?>(null);
     }
 
     private sealed class FakeContentStore : IRepositoryContentStore

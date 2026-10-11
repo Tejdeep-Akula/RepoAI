@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import ProjectImportPanel from './components/ProjectImportPanel'
 import ProjectChatPanel from './components/ProjectChatPanel'
 import ConversationLibraryPage from './components/ConversationLibraryPage'
+import ProjectStoryboardPage from './components/ProjectStoryboardPage'
 import './App.css'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5080')
@@ -573,7 +574,7 @@ function App() {
             ? <ConversationLibraryPage projects={projects} authorization={authorization} onUnauthorized={handleExpiredToken} onOpenConversation={handleOpenConversation} />
             : gatedPage('/conversations'))}
 
-          {routeIsVideos && !isRepositoryRoute && <section className="library-page"><div className="library-heading-row"><div><span className="section-kicker">VIDEO LIBRARY</span><h1>Videos</h1><p>Repository walkthrough videos will be organized here by repository.</p></div></div><div className="library-empty-state video-coming-soon"><span className="video-placeholder-icon"><Icon name="film" /></span><strong>Video generation is coming next</strong><p>Phase 9 will prepare evidence-backed storyboards. LTX video generation follows in Phase 10.</p><a className="inline-action" href="#/repositories">Choose a repository</a></div></section>}
+          {routeIsVideos && !isRepositoryRoute && <section className="library-page"><div className="library-heading-row"><div><span className="section-kicker">VIDEO WORKSPACES</span><h1>Videos</h1><p>Choose a repository to prepare and review its architecture storyboard.</p></div></div>{signIn && projects.length > 0 ? <div className="repository-card-grid">{projects.map((project) => <article className="repository-library-card" key={project.id}><div className="repository-card-icon"><Icon name="film" /></div><div className="repository-card-copy"><span className="section-kicker">VIDEO WORKSPACE</span><h2>{project.name}</h2><a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a></div><a className="repository-card-open" href={`#/repositories/${project.id}/videos`}>Open storyboard <span>→</span></a></article>)}</div> : !signIn ? gatedPage('/videos') : <div className="library-empty-state"><strong>No repositories yet</strong><p>Add a repository to create its storyboard.</p><a className="inline-action" href="#/repositories">Choose a repository</a></div>}</section>}
 
           {isRepositoryRoute && !signIn && gatedPage(`/repositories/${routeSegments[1]}`)}
           {isRepositoryRoute && signIn && !selectedProject && (projectLoadStatus === 'loading' || projectLoadStatus === 'idle'
@@ -591,7 +592,7 @@ function App() {
             {repositoryPage === 'overview' && <section className="repository-overview-card"><div><span className="section-kicker">PROJECT OVERVIEW</span><h2>Understand this codebase</h2><p>Import a snapshot to inspect its files and architecture, or open a conversation to ask evidence-grounded questions.</p></div><div className="repository-overview-actions"><a href={`#/repositories/${selectedProject.id}/analysis`}>Import &amp; analyze <span>→</span></a><a href={`#/repositories/${selectedProject.id}/conversations`}>Open conversations <span>→</span></a><a href={`#/repositories/${selectedProject.id}/videos`}>Video workspace <span>→</span></a></div></section>}
             {repositoryPage === 'analysis' && signIn && <ProjectImportPanel key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
             {isConversationRoute && signIn && <ProjectChatPanel key={`${selectedProject.id}-${conversationId ?? 'list'}`} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} view={isChatRoute ? 'chat' : 'list'} conversationId={conversationId} onOpenConversation={(id) => handleOpenConversation(selectedProject.id, id)} onBack={() => navigate(`/repositories/${selectedProject.id}/conversations`)} />}
-            {repositoryPage === 'videos' && <section className="library-empty-state video-coming-soon"><span className="video-placeholder-icon"><Icon name="film" /></span><strong>Videos for {selectedProject.name}</strong><p>Storyboard preparation is the next product phase; model-driven LTX rendering will follow it. Your future videos will be collected here.</p><a className="inline-action" href={`#/repositories/${selectedProject.id}/analysis`}>Go to repository analysis</a></section>}
+            {repositoryPage === 'videos' && signIn && <ProjectStoryboardPage key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
           </>}
 
           <footer className="page-footer"><span>Built to make the architecture behind the code visible.</span><span>REPOAI © 2026</span></footer>

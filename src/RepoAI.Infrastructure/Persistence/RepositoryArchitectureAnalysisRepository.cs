@@ -38,4 +38,11 @@ public sealed class RepositoryArchitectureAnalysisRepository(RepoAIDbContext dbC
                         && snapshot.ProjectId == projectId
                         && dbContext.Projects.Any(project => project.Id == projectId && project.OwnerId == ownerId)),
                 cancellationToken);
+
+    public Task<RepositoryArchitectureAnalysis?> FindForSnapshotAsync(
+        Guid snapshotId,
+        CancellationToken cancellationToken) =>
+        dbContext.RepositoryArchitectureAnalyses
+            .AsNoTracking()
+            .SingleOrDefaultAsync(analysis => analysis.SnapshotId == snapshotId, cancellationToken);
 }

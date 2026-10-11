@@ -337,6 +337,39 @@ namespace RepoAI.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("RepoAI.Domain.Entities.RepositoryStoryboardDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CommitSha")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTimeOffset>("GeneratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StoryboardJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SnapshotId")
+                        .IsUnique();
+
+                    b.ToTable("repository_storyboards", (string)null);
+                });
+
             modelBuilder.Entity("RepoAI.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -432,6 +465,15 @@ namespace RepoAI.Infrastructure.Persistence.Migrations
                     b.HasOne("RepoAI.Domain.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RepoAI.Domain.Entities.RepositoryStoryboardDocument", b =>
+                {
+                    b.HasOne("RepoAI.Domain.Entities.RepositorySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("SnapshotId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

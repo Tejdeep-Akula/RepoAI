@@ -109,6 +109,10 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/storyboard")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/storyboard", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.PostAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.GetAsync($"/api/v1/projects/{projectId}/conversations")).StatusCode);

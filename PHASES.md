@@ -260,14 +260,27 @@ quality or actual Ollama hardware throughput.
 repository snapshot, and receive streamed answers grounded with source citations,
 while project ownership remains enforced.
 
-## Phase 9 — Explanation and video storyboard
+## Phase 9 — Explanation and video storyboard — Complete
 
-Turn verified repository findings into an explanation outline, narration script,
-and structured video scenes. Provide a preview of the proposed explanation before
-expensive video generation.
+For an imported immutable snapshot with architecture analysis, users can enqueue
+`repository.storyboard` through `POST /api/v1/projects/{projectId}/snapshots/{snapshotId}/storyboard`
+and fetch the saved draft from the matching `GET` route. The API checks ownership
+and requires a saved architecture report. The durable Worker sends the report
+and a bounded evidence whitelist—not the full repository contents—to the
+configured Ollama model. Model citations are validated against that whitelist
+before scenes are saved in `repository_storyboards` and tied to their snapshot
+and commit. The repository Videos workspace lets users select snapshots, watch
+job progress, inspect narration/visual directions and source citations, and
+regenerate a draft. EF applies the table migration at startup.
 
-**Complete when:** each planned scene has a clear purpose, narration, visual
-instructions, and supporting repository evidence.
+This is a human-reviewable storyboard, not a guarantee of factual correctness or
+a rendered video. Citations are limited to evidence already present in static
+analysis; users should verify claims. LTX clip generation and composition remain
+Phase 10.
+
+**Verified:** solution build succeeds with zero warnings/errors; all 61 tests
+pass, including storyboard job behavior and unauthenticated endpoint checks;
+frontend lint and production build succeed; EF reports no pending model changes.
 
 ## Phase 10 — LTX video generation and composition
 

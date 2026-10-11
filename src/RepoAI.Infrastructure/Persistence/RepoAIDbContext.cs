@@ -21,6 +21,8 @@ public sealed class RepoAIDbContext(DbContextOptions<RepoAIDbContext> options) :
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    public DbSet<RepositoryStoryboardDocument> RepositoryStoryboards => Set<RepositoryStoryboardDocument>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepoAIDbContext).Assembly);
