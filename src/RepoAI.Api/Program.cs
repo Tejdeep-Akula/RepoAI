@@ -5,16 +5,22 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.IdentityModel.Tokens;
 using RepoAI.Api.Authentication;
 using RepoAI.Api.Errors;
+using RepoAI.Api.Middleware;
+using RepoAI.Api.OpenApi;
 using RepoAI.Application.Authentication;
 using RepoAI.Application.Jobs;
 using RepoAI.Application.Projects;
+using RepoAI.Application.Repositories;
 using RepoAI.Infrastructure.Authentication;
 using RepoAI.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+builder.Services.Configure<SimpleConsoleFormatterOptions>(options => options.IncludeScopes = true);
 
 if (builder.Environment.IsDevelopment())
 {
@@ -90,6 +96,7 @@ builder.Services.AddScoped<GoogleSignInService>();
 builder.Services.AddScoped<IProjectRepository, ProjectRepository>();
 builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
+builder.Services.AddScoped<IRepositorySnapshotRepository, RepositorySnapshotRepository>();
 builder.Services.AddScoped<BackgroundJobService>();
 
 builder.Services.AddHealthChecks();
@@ -129,6 +136,8 @@ builder.Services.AddProblemDetails(options =>
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddOpenApi("v1", options =>
 {
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
     options.AddDocumentTransformer((document, _, _) =>
     {
         document.Info.Title = "RepoAI API";
@@ -149,6 +158,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     await dbContext.Database.MigrateAsync();
 }
 
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 

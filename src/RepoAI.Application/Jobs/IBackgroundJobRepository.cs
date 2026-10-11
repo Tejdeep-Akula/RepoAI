@@ -42,6 +42,7 @@ public interface IBackgroundJobRepository
         Guid jobId,
         string workerId,
         string failureCode,
+        string failureMessage,
         TimeSpan retryDelay,
         CancellationToken cancellationToken);
 

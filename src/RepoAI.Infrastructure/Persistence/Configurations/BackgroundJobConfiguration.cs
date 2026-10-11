@@ -34,6 +34,7 @@ internal sealed class BackgroundJobConfiguration : IEntityTypeConfiguration<Back
         builder.Property(job => job.IdempotencyKey).HasMaxLength(128);
         builder.Property(job => job.LeaseOwner).HasMaxLength(200);
         builder.Property(job => job.FailureCode).HasMaxLength(100);
+        builder.Property(job => job.FailureMessage).HasMaxLength(2000);
 
         builder.Property(job => job.CreatedAtUtc).HasColumnType("timestamp with time zone");
         builder.Property(job => job.AvailableAtUtc).HasColumnType("timestamp with time zone");

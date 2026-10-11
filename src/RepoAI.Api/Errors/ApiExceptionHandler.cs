@@ -10,7 +10,12 @@ public sealed class ApiExceptionHandler(
     public async ValueTask<bool> TryHandleAsync(
         HttpContext context, Exception exception, CancellationToken cancellationToken)
     {
-        logger.LogError(exception, "Unhandled API exception for {Path}", context.Request.Path);
+        logger.LogError(
+            exception,
+            "Unhandled API exception for {Method} {Path} (TraceId: {TraceId})",
+            context.Request.Method,
+            context.Request.Path,
+            System.Diagnostics.Activity.Current?.Id ?? context.TraceIdentifier);
         context.Response.StatusCode = StatusCodes.Status500InternalServerError;
 
         await problemDetails.WriteAsync(new ProblemDetailsContext

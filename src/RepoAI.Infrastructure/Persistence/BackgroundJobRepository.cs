@@ -119,6 +119,8 @@ public sealed class BackgroundJobRepository(RepoAIDbContext dbContext) : IBackgr
         job.AttemptCount++;
         job.StartedAtUtc ??= now;
         job.UpdatedAtUtc = now;
+        job.FailureCode = null;
+        job.FailureMessage = null;
         job.LeaseOwner = workerId;
         job.LeaseExpiresAtUtc = now.Add(leaseDuration);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -205,6 +207,7 @@ public sealed class BackgroundJobRepository(RepoAIDbContext dbContext) : IBackgr
         Guid jobId,
         string workerId,
         string failureCode,
+        string failureMessage,
         TimeSpan retryDelay,
         CancellationToken cancellationToken)
     {
@@ -216,6 +219,7 @@ public sealed class BackgroundJobRepository(RepoAIDbContext dbContext) : IBackgr
 
         var now = DateTimeOffset.UtcNow;
         job.FailureCode = failureCode;
+        job.FailureMessage = failureMessage.Length <= 2000 ? failureMessage : failureMessage[..2000];
         job.UpdatedAtUtc = now;
         ClearLease(job);
 
@@ -266,6 +270,7 @@ public sealed class BackgroundJobRepository(RepoAIDbContext dbContext) : IBackgr
             {
                 job.Status = BackgroundJobStatus.Failed;
                 job.FailureCode = "worker_lease_expired";
+                job.FailureMessage = "The worker stopped renewing its lease before the job completed.";
                 job.CompletedAtUtc = now;
             }
         }

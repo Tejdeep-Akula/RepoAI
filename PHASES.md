@@ -6,7 +6,7 @@ step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
 Phases 1–6 are **Complete**.
-Phases 7–13 are **Not started**.
+Phase 7 is **In progress**. Phases 8–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -164,9 +164,31 @@ and handles retry and cancellation without duplicating published results.
 
 ## Phase 7 — Repository import and understanding
 
-Agree on initial repository providers and language coverage. Import a repository
-at a fixed commit, analyze supported code and configuration, and expose searchable
-files, components, dependencies, and evidence for architecture relationships.
+**Status:** In progress — first slice imports public GitHub snapshots and inventories files.
+
+The initial provider is public GitHub, with no language allowlist. Every archive
+file path is inventoried; file types/languages are detected best-effort, text is
+stored through a local content-store adapter, and binaries are recorded as metadata.
+Large text files receive a visible skip reason. Archive size, expanded size and
+file-count safeguards fail the job with a stable failure code rather than silently
+truncating the inventory. Repository code is never executed.
+
+**Delivered:** `repository.import` durable jobs pin the selected ref (or the
+repository's default branch) to a commit SHA, download that immutable GitHub
+archive, guard against redirects and unsafe archive paths, and persist
+`repository_snapshots` and `repository_files`. Owner-scoped endpoints queue
+imports, list snapshots and return paginated file metadata. Small text files are
+stored under the ignored local `data/repository-content` directory; raw content is
+not stored in PostgreSQL or exposed by an API endpoint. Binary file content is not
+stored. The frontend does not yet expose import controls.
+
+**Verified:** solution build succeeds with zero warnings/errors; all 43 tests pass,
+including mocked GitHub commit pinning, archive traversal rejection, file
+classification, authenticated endpoint checks, and API contract coverage. The
+runtime migration is applied to the local PostgreSQL database.
+
+**Next:** add the browser workflow for queuing imports and browsing snapshot file
+inventories; then begin language-independent project/dependency analysis.
 
 **Complete when:** a supported repository produces an inspectable architecture
 overview with source references and clearly stated analysis limitations.

@@ -94,6 +94,20 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task RepositoryImportAndSnapshotEndpointsRequireAuthentication()
+    {
+        var projectId = Guid.NewGuid();
+        var snapshotId = Guid.NewGuid();
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync($"/api/v1/projects/{projectId}/imports", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/files")).StatusCode);
+    }
+
+    [Fact]
     public async Task DurableJobsSupportIdempotentEnqueueProgressRetryCancellationAndRecovery()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -155,8 +169,15 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             default);
         Assert.NotNull(retryClaim);
         Assert.Equal(2, retryClaim.AttemptCount);
-        await repository.FailAsync(retryClaim.Id, "test-worker-retry", "test_failure", TimeSpan.Zero, default);
+        await repository.FailAsync(
+            retryClaim.Id,
+            "test-worker-retry",
+            "test_failure",
+            "Test failure detail",
+            TimeSpan.Zero,
+            default);
         Assert.Equal(BackgroundJobStatus.RetryWaiting, retryClaim.Status);
+        Assert.Equal("Test failure detail", retryClaim.FailureMessage);
 
         var finalClaim = await repository.ClaimNextAsync(
             "test-worker-final",
@@ -165,6 +186,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             default);
         Assert.NotNull(finalClaim);
         Assert.Equal(3, finalClaim.AttemptCount);
+        Assert.Null(finalClaim.FailureMessage);
         await repository.CompleteAsync(finalClaim.Id, "test-worker-final", default);
         Assert.Equal(BackgroundJobStatus.Succeeded, finalClaim.Status);
         Assert.Equal(100, finalClaim.ProgressPercentage);
@@ -181,6 +203,10 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     {
         Assert.Contains("swagger-ui", await client.GetStringAsync("/swagger/index.html"));
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
+        var bearerScheme = document.GetProperty("components")
+            .GetProperty("securitySchemes").GetProperty("Bearer");
+        Assert.Equal("http", bearerScheme.GetProperty("type").GetString());
+        Assert.Equal("bearer", bearerScheme.GetProperty("scheme").GetString());
         var operation = document.GetProperty("paths")
             .GetProperty("/api/v1/repositories/validate").GetProperty("post");
         Assert.True(operation.GetProperty("responses").TryGetProperty("200", out _));
@@ -192,6 +218,15 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         var jobStatus = jobPaths.GetProperty("/api/v1/jobs/{jobId}");
         Assert.True(jobStatus.TryGetProperty("get", out _));
         Assert.True(jobStatus.TryGetProperty("delete", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/imports", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/files", out _));
+
+        var protectedOperation = jobPaths.GetProperty("/api/v1/projects/{projectId}").GetProperty("get");
+        Assert.Contains(protectedOperation.GetProperty("security").EnumerateArray(), requirement =>
+            requirement.TryGetProperty("Bearer", out _));
+        var publicSignIn = jobPaths.GetProperty("/api/v1/auth/google").GetProperty("post");
+        Assert.False(publicSignIn.TryGetProperty("security", out _));
     }
 
     [Fact]

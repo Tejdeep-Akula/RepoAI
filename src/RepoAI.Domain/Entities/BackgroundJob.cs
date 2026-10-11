@@ -53,4 +53,7 @@ public sealed class BackgroundJob
     public DateTimeOffset? LeaseExpiresAtUtc { get; set; }
 
     public string? FailureCode { get; set; }
+
+    /// <summary>A safe, user-visible summary of the most recent failed attempt.</summary>
+    public string? FailureMessage { get; set; }
 }

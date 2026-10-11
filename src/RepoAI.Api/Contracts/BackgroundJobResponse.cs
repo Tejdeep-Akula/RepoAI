@@ -11,4 +11,5 @@ public sealed record BackgroundJobResponse(
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? CompletedAtUtc,
-    string? FailureCode);
+    string? FailureCode,
+    string? FailureMessage);

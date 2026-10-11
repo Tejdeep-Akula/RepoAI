@@ -2,11 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using RepoAI.Application.Jobs;
+using RepoAI.Application.Repositories;
 using RepoAI.Infrastructure.Persistence;
+using RepoAI.Infrastructure.Repositories;
 using RepoAI.Worker.Jobs;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+builder.Services.Configure<SimpleConsoleFormatterOptions>(options => options.IncludeScopes = true);
 var repositoryRoot = FindRepositoryRoot(AppContext.BaseDirectory);
 if (repositoryRoot is not null)
 {
@@ -25,6 +31,30 @@ var connectionString = builder.Configuration.GetConnectionString("RepoAI")
 builder.Services.AddDbContext<RepoAIDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
 builder.Services.AddScoped<IBackgroundJobHandler, DemoProgressJobHandler>();
+builder.Services.AddScoped<IBackgroundJobHandler, RepositoryImportJobHandler>();
+builder.Services.AddScoped<IRepositoryImportService, GitHubRepositoryImportService>();
+builder.Services.AddScoped<IRepositoryContentStore, LocalRepositoryContentStore>();
+builder.Services.Configure<RepositoryImportOptions>(builder.Configuration.GetSection("RepositoryImport"));
+builder.Services.PostConfigure<RepositoryImportOptions>(options =>
+{
+    if (string.IsNullOrWhiteSpace(options.StorageRoot))
+    {
+        options.StorageRoot = Path.Combine(
+            repositoryRoot ?? AppContext.BaseDirectory,
+            "data",
+            "repository-content");
+    }
+});
+builder.Services.AddHttpClient(GitHubRepositoryImportService.HttpClientName, client =>
+    {
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("RepoAI/1.0");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false
+    });
 builder.Services.AddHostedService<BackgroundJobWorker>();
 
 var host = builder.Build();

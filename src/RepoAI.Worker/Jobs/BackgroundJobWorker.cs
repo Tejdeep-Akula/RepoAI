@@ -10,7 +10,7 @@ public sealed class BackgroundJobWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<BackgroundJobWorker> logger) : BackgroundService
 {
-    private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(1);
     private readonly string workerId = $"{Environment.MachineName}:{Guid.NewGuid():N}";
 
@@ -37,6 +37,12 @@ public sealed class BackgroundJobWorker(
                     continue;
                 }
 
+                logger.LogInformation(
+                    "Claimed background job {JobId} of kind {JobKind} for attempt {AttemptCount} of {MaxAttempts}",
+                    job.Id,
+                    job.Kind,
+                    job.AttemptCount,
+                    job.MaxAttempts);
                 await ProcessAsync(job, repository, handlers, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -64,6 +70,14 @@ public sealed class BackgroundJobWorker(
         if (handler is null) return;
 
         var executionContext = new BackgroundJobExecutionContext(repository, job.Id, workerId, LeaseDuration);
+        using var logScope = logger.BeginScope(new Dictionary<string, object>
+        {
+            ["JobId"] = job.Id,
+            ["ProjectId"] = job.ProjectId,
+            ["JobKind"] = job.Kind,
+            ["AttemptCount"] = job.AttemptCount,
+            ["WorkerId"] = workerId
+        });
         try
         {
             await handler.ExecuteAsync(job, executionContext, stoppingToken);
@@ -86,7 +100,12 @@ public sealed class BackgroundJobWorker(
             await repository.FailAsync(
                 job.Id,
                 workerId,
-                "handler_failed",
+                exception is BackgroundJobFailureException failure
+                    ? failure.FailureCode
+                    : "handler_failed",
+                exception is BackgroundJobFailureException safeFailure
+                    ? safeFailure.Message
+                    : "An unexpected error occurred while processing this job. Check worker logs using the job ID.",
                 TimeSpan.FromSeconds(Math.Min(60, Math.Pow(2, Math.Max(0, job.AttemptCount - 1)))),
                 stoppingToken);
         }

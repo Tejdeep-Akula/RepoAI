@@ -118,5 +118,6 @@ public sealed class BackgroundJobsController(
         job.CreatedAtUtc,
         job.StartedAtUtc,
         job.CompletedAtUtc,
-        job.FailureCode);
+        job.FailureCode,
+        job.FailureMessage);
 }

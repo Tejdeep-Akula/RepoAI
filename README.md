@@ -67,10 +67,10 @@ Local OAuth settings live in Git-ignored `frontend/.env.local` and
 the .NET API after changing these files. To verify the production build, run
 `npm run build` from `frontend/`.
 
-The three class libraries are deliberately empty until their first approved
-features. Infrastructure can access Domain through the transitive project
-reference. Domain does not depend on web or database frameworks. A separate Worker
-process will be introduced in Phase 6.
+Application contains use cases and persistence/job interfaces; Domain contains
+the core entities; Infrastructure implements PostgreSQL persistence and repository
+content storage. Domain does not depend on web or database frameworks. The separate
+Worker process runs durable jobs.
 
 ## SDK and build
 
@@ -301,7 +301,7 @@ Local Google OAuth settings are in Git-ignored
 routes reject requests without a valid bearer token. “Chat sessions” remain
 saved conversations, not server-side login-session records.
 
-## Phase 6: Durable background processing (in progress)
+## Phase 6: Durable background processing (complete)
 
 The API and a separate .NET Worker share a PostgreSQL-backed job queue. Start
 the API (which applies EF migrations) and Worker from the repository root in
@@ -330,6 +330,47 @@ repository. The API hides this endpoint outside Development. Jobs persist after
 process restarts; workers use expiring leases and PostgreSQL `SKIP LOCKED` claims
 so multiple worker processes do not claim the same row concurrently.
 
+API requests and worker lifecycle events are written as structured console logs.
+EF Core SQL command logs are reduced to warnings so they do not drown out useful
+diagnostics. Failed jobs also retain a safe `failureMessage` alongside
+`failureCode`; read it from `GET /api/v1/jobs/{jobId}`. Stack traces remain in
+the Worker console and are not returned by the API.
+
+## Phase 7: Public GitHub import and file inventory (in progress)
+
+Repository imports currently support public `github.com` owner/repository URLs.
+The API queues imports as durable jobs. The Worker resolves the requested ref—or
+the repository's default branch—to a commit SHA and downloads that fixed commit's
+archive. Redirects are rejected, archive paths are checked before use, and
+repository code is never executed.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/projects/{projectId}/imports` | Queue an import; optional JSON `{"ref":"main"}` and optional `Idempotency-Key` |
+| `GET /api/v1/jobs/{jobId}` | Poll import status and progress |
+| `GET /api/v1/projects/{projectId}/snapshots` | List the project's imported commit snapshots |
+| `GET /api/v1/projects/{projectId}/snapshots/{snapshotId}/files?page=1&pageSize=100` | Browse the snapshot's paginated file inventory |
+
+All endpoints require the signed-in user's bearer token and enforce project
+ownership. The API accepts imports only for public GitHub repository URLs; other
+hosts and nested repository paths are rejected.
+
+`repository_snapshots` and `repository_files` store the commit and complete file
+inventory metadata in PostgreSQL. Small text-file bytes are kept outside the
+database under the ignored local `data/repository-content` directory. Binary
+content is not stored; those files remain in the inventory with path, size,
+detected type and SHA-256. Unknown extensions are still inventoried and labeled
+best-effort. Files above the text-file limit receive `file_size_limit`; configured
+archive, expanded-size, and file-count limits fail the job with a visible
+`FailureCode` rather than silently producing a partial snapshot.
+
+Defaults are 100 MiB compressed archive, 500 MiB expanded contents, 20,000 files,
+and 5 MiB per stored text file. The Worker accepts overrides through
+`RepositoryImport__StorageRoot`, `RepositoryImport__MaxArchiveBytes`,
+`RepositoryImport__MaxExpandedBytes`, `RepositoryImport__MaxTextFileBytes`, and
+`RepositoryImport__MaxFiles`. The current slice provides import and inventory
+APIs; the browser import workflow and architecture analysis are subsequent steps.
+
 ## Verification
 
 ```sh
@@ -354,6 +395,6 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 ## Later phases
 
-Phases 1–5 are complete. Phase 6's durable queue and Worker host are in progress.
-Repository analysis, chat conversations and LTX integration follow the roadmap.
-No login-session table is introduced.
+Phases 1–6 are complete. Phase 7's public GitHub import and file inventory are in
+progress. Architecture analysis, chat conversations and LTX integration follow
+the roadmap. No login-session table is introduced.

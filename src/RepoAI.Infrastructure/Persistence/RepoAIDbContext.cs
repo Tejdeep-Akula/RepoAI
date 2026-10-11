@@ -11,6 +11,10 @@ public sealed class RepoAIDbContext(DbContextOptions<RepoAIDbContext> options) :
 
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
 
+    public DbSet<RepositorySnapshot> RepositorySnapshots => Set<RepositorySnapshot>();
+
+    public DbSet<RepositoryFile> RepositoryFiles => Set<RepositoryFile>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepoAIDbContext).Assembly);
