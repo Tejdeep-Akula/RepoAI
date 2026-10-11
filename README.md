@@ -58,9 +58,13 @@ syntax check, and indicates the Google sign-in setup status. URL validation
 checks syntax only; it does not fetch or import a repository. Google Identity
 Services now sends its ID token to the .NET sign-in endpoint; the returned
 15-minute RepoAI access token is kept in browser memory only. The Google Client
-Secret is not used. After sign-in, the workspace lists the authenticated user's
-projects and supports creating a project with a name and repository URL. The
-JWT is sent as a bearer token only for project API calls.
+Secret is not used. After sign-in, the workspace provides separate Repositories,
+Conversations, and Videos destinations. Repositories open an individual
+repository workspace with overview, analysis, conversations, and video sections.
+Saved conversations are grouped by repository; selecting one opens a dedicated
+chat page. The video pages are navigation placeholders until storyboard and video
+generation are implemented. Project creation is available from the Repositories
+page. The JWT is sent as a bearer token only for project API calls.
 
 Local OAuth settings live in Git-ignored `frontend/.env.local` and
 `src/RepoAI.Api/appsettings.Local.json`. Restart both the Vite dev server and
@@ -352,7 +356,6 @@ repository code is never executed.
 | `GET /api/v1/projects/{projectId}/snapshots/{snapshotId}/files?page=1&pageSize=100` | Browse the snapshot's paginated file inventory |
 | `POST /api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis` | Queue static architecture analysis; returns a durable job |
 | `GET /api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture` | Retrieve the saved architecture report after analysis succeeds |
-
 All endpoints require the signed-in user's bearer token and enforce project
 ownership. The API accepts imports only for public GitHub repository URLs; other
 hosts and nested repository paths are rejected.
@@ -396,6 +399,48 @@ can be missed; this is not a complete call graph or runtime data-flow trace.
 Analysis runs as a durable Worker job; its versioned JSON report is saved against
 the immutable snapshot commit and can be fetched after job completion.
 
+## Phase 8: Repository chat with Ollama
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/projects/{projectId}/conversations` | Create a saved chat for an owned snapshot; optional title |
+| `GET /api/v1/projects/{projectId}/conversations` | List the signed-in user's saved chats for a project |
+| `GET /api/v1/projects/{projectId}/conversations/{conversationId}` | Reopen a chat and retrieve its message history |
+| `POST /api/v1/projects/{projectId}/conversations/{conversationId}/messages/stream` | Ask a question; receive Server-Sent Events with answer deltas and citations |
+
+All routes require the signed-in user's bearer token and enforce project ownership.
+
+The .NET API calls Ollama's HTTP service through the `OllamaSharp` NuGet client.
+Ollama runs separately and manages the model weights; install/run it, then
+download the configured coding model once:
+
+```sh
+ollama pull qwen2.5-coder:7b
+```
+
+The default Ollama endpoint is `http://localhost:11434`, and the default model
+is `qwen2.5-coder:7b` (Qwen2.5-Coder's 7B release uses Apache 2.0). Change either
+using `Chat:Ollama:Endpoint` and `Chat:Ollama:Model` configuration (for example,
+environment variables `Chat__Ollama__Endpoint` and `Chat__Ollama__Model`). A
+smaller compatible model can be selected when local memory is limited. The API
+does not start Ollama, pull model files, or package them into the API image. If
+the API runs in a container while Ollama runs on the host, configure the endpoint
+to the host address reachable from that container (commonly
+`http://host.docker.internal:11434`). The configured Ollama endpoint receives
+retrieved repository excerpts; use a local endpoint if code must stay on the
+development machine.
+
+To use chat, import a repository and select a completed snapshot in its repository
+workspace. Start a conversation tied to that immutable snapshot, then ask questions.
+The API retrieves bounded text excerpts from the snapshot's stored files,
+provides them as untrusted context to the model, streams the answer, and stores
+the user and assistant messages. Assistant messages retain their model ID and
+source citations (`path:startLine-endLine`); conversations are project-owner
+scoped. Follow-up prompts include recent messages from the same conversation.
+Retrieval is lexical and bounded (candidate/file/byte/chunk limits), so answers
+can miss relevant code; citations should be checked against source. Repository
+files are never executed by this integration.
+
 ## Verification
 
 ```sh
@@ -420,7 +465,7 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 ## Later phases
 
-Phases 1–7 are complete, including the extended best-effort static architecture
-analysis. Open-model integration and repository chat follow, then storyboarding
-and LTX video generation. The architecture graph is evidence-backed static
+Phases 1–8 are complete, including the extended best-effort static architecture
+analysis and Ollama-backed, evidence-grounded repository chat. Storyboarding and
+LTX video generation follow. The architecture graph is evidence-backed static
 analysis, not a complete runtime call graph. No login-session table is introduced.

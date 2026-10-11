@@ -18,4 +18,9 @@
     <ProjectReference Include="../RepoAI.Application/RepoAI.Application.csproj" />
     <ProjectReference Include="../RepoAI.Infrastructure/RepoAI.Infrastructure.csproj" />
   </ItemGroup>
+  <!-- Static web asset discovery must not re-ingest generated build output. -->
+  <ItemGroup>
+    <Content Remove="bin/**;obj/**" />
+    <None Remove="bin/**;obj/**" />
+  </ItemGroup>
 </Project>

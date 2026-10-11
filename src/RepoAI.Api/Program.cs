@@ -6,17 +6,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using OllamaSharp;
 using RepoAI.Api.Authentication;
 using RepoAI.Api.Errors;
 using RepoAI.Api.Middleware;
 using RepoAI.Api.OpenApi;
 using RepoAI.Application.Authentication;
+using RepoAI.Application.Chat;
 using RepoAI.Application.Jobs;
 using RepoAI.Application.Projects;
 using RepoAI.Application.Repositories;
 using RepoAI.Infrastructure.Authentication;
 using RepoAI.Infrastructure.Persistence;
+using RepoAI.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
@@ -98,7 +103,38 @@ builder.Services.AddScoped<ProjectService>();
 builder.Services.AddScoped<IBackgroundJobRepository, BackgroundJobRepository>();
 builder.Services.AddScoped<IRepositorySnapshotRepository, RepositorySnapshotRepository>();
 builder.Services.AddScoped<IRepositoryArchitectureAnalysisRepository, RepositoryArchitectureAnalysisRepository>();
+builder.Services.AddScoped<IChatConversationRepository, ChatConversationRepository>();
+builder.Services.AddScoped<ChatConversationService>();
 builder.Services.AddScoped<BackgroundJobService>();
+builder.Services.AddScoped<IRepositoryContentStore, LocalRepositoryContentStore>();
+builder.Services.AddScoped<IRepositoryEvidenceRetriever, RepositoryEvidenceRetriever>();
+builder.Services.AddScoped<IRepositoryChatModel, OllamaRepositoryChatModel>();
+builder.Services.Configure<RepositoryImportOptions>(builder.Configuration.GetSection("RepositoryImport"));
+builder.Services.PostConfigure<RepositoryImportOptions>(options =>
+{
+    if (string.IsNullOrWhiteSpace(options.StorageRoot))
+    {
+        options.StorageRoot = Path.GetFullPath(Path.Combine(
+            builder.Environment.ContentRootPath, "..", "..", "data", "repository-content"));
+    }
+});
+builder.Services.Configure<OllamaChatOptions>(builder.Configuration.GetSection("Chat:Ollama"));
+builder.Services.AddSingleton<IChatClient>(services =>
+{
+    var options = services.GetRequiredService<IOptions<OllamaChatOptions>>().Value;
+    if (!Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpoint)
+        || endpoint.Scheme is not ("http" or "https"))
+    {
+        throw new InvalidOperationException("Chat:Ollama:Endpoint must be an absolute HTTP or HTTPS URL.");
+    }
+
+    if (string.IsNullOrWhiteSpace(options.Model))
+    {
+        throw new InvalidOperationException("Chat:Ollama:Model must name an installed Ollama model.");
+    }
+
+    return new OllamaApiClient(endpoint, options.Model);
+});
 
 builder.Services.AddHealthChecks();
 if (builder.Environment.IsDevelopment())

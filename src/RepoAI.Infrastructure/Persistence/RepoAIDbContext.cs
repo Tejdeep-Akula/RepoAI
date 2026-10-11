@@ -17,6 +17,10 @@ public sealed class RepoAIDbContext(DbContextOptions<RepoAIDbContext> options) :
 
     public DbSet<RepositoryArchitectureAnalysis> RepositoryArchitectureAnalyses => Set<RepositoryArchitectureAnalysis>();
 
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(RepoAIDbContext).Assembly);

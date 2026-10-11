@@ -6,7 +6,7 @@ step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
 Phases 1–7 are **Complete** (Phase 7 includes the extended static architecture analysis scope).
-Phases 8–13 are **Not started**.
+Phase 8 is **Complete**; Phases 9–13 are **Not started**.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -227,12 +227,38 @@ analysis, or proof of runtime behavior; see the limitations above.
 
 ## Phase 8 — Open-model integration and chat conversations
 
-Select and configure an appropriate open model, retrieve repository evidence, and
-build detailed conversational answers. Persist separate conversations and messages,
-support follow-up questions, and provide streaming responses and code citations.
+**Status:** Complete — Ollama-backed grounded chat, SSE streaming, saved follow-ups, citations, and project UI are implemented.
 
-**Complete when:** users can create and reopen chats, ask repository questions, and
-receive grounded answers that respect project access and the selected code snapshot.
+OllamaSharp connects the .NET Infrastructure layer to a separately hosted Ollama
+HTTP API. The configured default is `qwen2.5-coder:7b` at
+`http://localhost:11434`; both endpoint and model are configurable. The API does
+not install Ollama, download model weights, or require Ollama to run in Docker.
+The conversation service retrieves bounded lexical evidence from text files
+stored for the selected immutable snapshot, supplies it with recent conversation
+history to the model, and asks the model to cite only the supplied evidence.
+The model is explicitly told repository contents are untrusted input. The SSE
+endpoint sends answer deltas and a completion event with citation metadata;
+assistant messages persist their model ID and citations. User messages and
+assistant replies are stored separately, so follow-ups can use conversation
+history. The project UI can select a snapshot, create and reopen chats, stream
+answers, and display file/line citations. No chat login-session state is needed.
+
+**Verified:** API integration suite passes, including chat storage ownership,
+snapshot scoping, streamed service answer/citation persistence using a fake model,
+and unauthenticated rejection of conversation and streaming endpoints. The API
+builds with zero warnings/errors; all 60 tests pass. The frontend lint and
+production build succeed, and EF reports no pending model changes.
+
+**Limitations:** evidence retrieval is bounded lexical search, not a semantic
+vector index. Answers can omit source context or make mistakes; citations point
+to retrieved ranges and should be verified in the repository. A local Ollama
+service and the configured model must be available for actual model-driven
+responses. The test suite uses a fake model and does not claim to validate model
+quality or actual Ollama hardware throughput.
+
+**Complete when:** users can create/reopen chats, ask questions about a selected
+repository snapshot, and receive streamed answers grounded with source citations,
+while project ownership remains enforced.
 
 ## Phase 9 — Explanation and video storyboard
 

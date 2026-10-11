@@ -103,6 +103,79 @@ namespace RepoAI.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("RepoAI.Domain.Entities.ChatConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SnapshotId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SnapshotId");
+
+                    b.HasIndex("ProjectId", "UpdatedAtUtc");
+
+                    b.ToTable("chat_conversations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_chat_conversations_title", "length(trim(\"Title\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("RepoAI.Domain.Entities.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CitationsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "CreatedAtUtc");
+
+                    b.ToTable("chat_messages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_chat_messages_content", "length(trim(\"Content\")) > 0");
+
+                            t.HasCheckConstraint("CK_chat_messages_role", "\"Role\" IN ('user', 'assistant')");
+                        });
+                });
+
             modelBuilder.Entity("RepoAI.Domain.Entities.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -300,6 +373,30 @@ namespace RepoAI.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RepoAI.Domain.Entities.ChatConversation", b =>
+                {
+                    b.HasOne("RepoAI.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RepoAI.Domain.Entities.RepositorySnapshot", null)
+                        .WithMany()
+                        .HasForeignKey("SnapshotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RepoAI.Domain.Entities.ChatMessage", b =>
+                {
+                    b.HasOne("RepoAI.Domain.Entities.ChatConversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

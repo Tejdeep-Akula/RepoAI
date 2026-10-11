@@ -280,9 +280,9 @@ function ProjectImportPanel({ projectId, authorization, onUnauthorized }: Projec
   const [job, setJob] = useState<BackgroundJob | null>(null)
   const [isQueueing, setIsQueueing] = useState(false)
   const [jobError, setJobError] = useState('')
-  const [isSnapshotPanelOpen, setIsSnapshotPanelOpen] = useState(false)
+  const [isSnapshotPanelOpen, setIsSnapshotPanelOpen] = useState(true)
   const [snapshots, setSnapshots] = useState<RepositorySnapshot[]>([])
-  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false)
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(true)
   const [snapshotError, setSnapshotError] = useState('')
   const [selectedSnapshotId, setSelectedSnapshotId] = useState('')
   const [filePageNumber, setFilePageNumber] = useState(1)
@@ -562,9 +562,9 @@ function ProjectImportPanel({ projectId, authorization, onUnauthorized }: Projec
           className="import-button"
           type="button"
           onClick={() => void queueImport()}
-          disabled={isQueueing || activeJob}
+          disabled={isQueueing || activeJob || isLoadingSnapshots}
         >
-          {isQueueing ? 'Queueing…' : activeJob ? 'Import in progress' : 'Import repository'}
+          {isQueueing ? 'Queueing…' : activeJob ? 'Import in progress' : isLoadingSnapshots ? 'Checking snapshots…' : snapshots.length > 0 ? 'Import newer snapshot' : 'Import repository'}
         </button>
         <button
           className="snapshots-toggle"

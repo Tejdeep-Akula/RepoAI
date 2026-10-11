@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import ProjectImportPanel from './components/ProjectImportPanel'
+import ProjectChatPanel from './components/ProjectChatPanel'
+import ConversationLibraryPage from './components/ConversationLibraryPage'
 import './App.css'
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5080')
@@ -116,6 +118,9 @@ function explainProblem(problem: ProblemDetails, fallback: string) {
 
 function App() {
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
+  const [routePath, setRoutePath] = useState(() => window.location.hash.startsWith('#/')
+    ? window.location.hash.slice(1)
+    : '/overview')
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [apiMessage, setApiMessage] = useState('Checking API…')
   const [repositoryUrl, setRepositoryUrl] = useState('')
@@ -137,6 +142,46 @@ function App() {
   const [googleScriptError, setGoogleScriptError] = useState('')
   const [googleButtonContainer, setGoogleButtonContainer] = useState<HTMLDivElement | null>(null)
   const googleIdentityInitialized = useRef(false)
+
+  useEffect(() => {
+    const syncRoute = () => setRoutePath(window.location.hash.startsWith('#/')
+      ? window.location.hash.slice(1)
+      : '/overview')
+    window.addEventListener('hashchange', syncRoute)
+    window.addEventListener('popstate', syncRoute)
+    return () => {
+      window.removeEventListener('hashchange', syncRoute)
+      window.removeEventListener('popstate', syncRoute)
+    }
+  }, [])
+
+  function navigate(path: string) {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`
+    if (window.location.hash === `#${normalizedPath}`) {
+      setRoutePath(normalizedPath)
+    } else {
+      window.history.pushState(null, '', `#${normalizedPath}`)
+      setRoutePath(normalizedPath)
+    }
+  }
+
+  const routeSegments = routePath.split('/').filter(Boolean)
+  const isRepositoryRoute = routeSegments[0] === 'repositories' && routeSegments.length >= 2
+  const selectedProject = isRepositoryRoute
+    ? projects.find((project) => project.id === routeSegments[1])
+    : undefined
+  const repositoryPage = routeSegments[2] ?? 'overview'
+  const isConversationRoute = isRepositoryRoute && repositoryPage === 'conversations'
+  const isChatRoute = isConversationRoute && routeSegments.length >= 4
+  const conversationId = isChatRoute ? routeSegments[3] : undefined
+  const routeIsOverview = routeSegments.length === 0 || routeSegments[0] === 'overview'
+  const routeIsRepositories = routeSegments[0] === 'repositories' && !isRepositoryRoute
+  const routeIsConversations = routeSegments[0] === 'conversations'
+  const routeIsVideos = routeSegments[0] === 'videos' || (isRepositoryRoute && repositoryPage === 'videos')
+  const authorization = signIn ? `${signIn.tokenType} ${signIn.accessToken}` : ''
+
+  const handleOpenConversation = (projectId: string, id: string) =>
+    navigate(`/repositories/${projectId}/conversations/${id}`)
 
   const handleExpiredToken = useCallback(() => {
     setSignInError('Your RepoAI access token expired. Please sign in again.')
@@ -388,248 +433,166 @@ function App() {
     }
   }
 
+  const workspaceLink = (path: string, label: string, icon: 'grid' | 'folder' | 'film' | 'chat', active: boolean) => (
+    <a className={`nav-link ${active ? 'active' : ''}`} href={`#${path}`} key={label}>
+      <Icon name={icon} />{label}
+    </a>
+  )
+
+  const projectForm = signIn && isProjectFormOpen && (
+    <form className="project-form" onSubmit={createProject}>
+      <label htmlFor="project-name">Project name</label>
+      <input id="project-name" type="text" required minLength={1} maxLength={200}
+        placeholder="e.g. Payments service" value={projectName}
+        onChange={(event) => setProjectName(event.target.value)} />
+      <label htmlFor="project-repository-url">Git repository URL</label>
+      <input id="project-repository-url" type="url" required maxLength={2048}
+        placeholder="https://github.com/owner/repository" value={projectRepositoryUrl}
+        onChange={(event) => setProjectRepositoryUrl(event.target.value)} />
+      <button type="submit" disabled={isCreatingProject}>{isCreatingProject ? 'Creating…' : 'Create project'}</button>
+      {createProjectError && <p className="project-form-error" role="alert">{createProjectError}</p>}
+    </form>
+  )
+
+  const accountPanel = (
+    <aside className="setup-card account-panel">
+      <div className="setup-icon"><Icon name="spark" /></div>
+      <div className="section-kicker">ACCOUNT</div>
+      <h2>{signIn ? 'You’re signed in' : 'Make it yours'}</h2>
+      {signIn ? (
+        <>
+          <p className="signed-in-name">{signIn.displayName}</p>
+          {signIn.email && <p className="signed-in-email">{signIn.email}</p>}
+          <div className="setup-divider" />
+          <p className="setup-detail">Your RepoAI access token is held in this tab’s memory only and expires after 15 minutes.</p>
+          <button className="clear-sign-in" type="button" onClick={() => {
+            window.google?.accounts?.id?.disableAutoSelect()
+            setSignIn(null)
+            setProjects([])
+            setProjectLoadStatus('idle')
+            setProjectLoadError('')
+            setIsProjectFormOpen(false)
+          }}>Clear sign-in</button>
+        </>
+      ) : (
+        <>
+          <p>Google sign-in connects your account to a private RepoAI workspace.</p>
+          <div className="setup-status">
+            <span className={googleClientId ? 'setup-status-dot configured' : 'setup-status-dot'} />
+            {googleClientId ? 'Ready to connect with Google' : 'Google Client ID is missing'}
+          </div>
+          {googleClientId ? <>
+            <div className="google-button" ref={setGoogleButtonContainer} aria-busy={isSigningIn} />
+            {isSigningIn && <p className="auth-progress" role="status">Verifying your Google account…</p>}
+            {googleScriptError && <p className="auth-error" role="alert">{googleScriptError}</p>}
+            {signInError && <p className="auth-error" role="alert">{signInError}</p>}
+            <p className="setup-detail">Google verifies your account; RepoAI creates a short-lived token for this tab.</p>
+          </> : <p className="setup-detail">Set VITE_GOOGLE_CLIENT_ID in frontend/.env.local, then restart Vite to enable sign-in.</p>}
+        </>
+      )}
+    </aside>
+  )
+
+  const renderProjectStatus = () => {
+    if (!signIn) return <div className="library-empty-state"><strong>Sign in to view your repositories</strong><p>Your repositories and conversations are private to your RepoAI account.</p><a className="inline-action" href="#/overview">Go to Overview to sign in</a></div>
+    if (projectLoadStatus === 'loading' || projectLoadStatus === 'idle') return <p className="library-message">Loading your repositories…</p>
+    if (projectLoadStatus === 'error') return <div className="project-load-error" role="alert"><p>{projectLoadError}</p><button type="button" onClick={() => { setProjectLoadError(''); setProjectLoadStatus('loading'); setProjectReloadKey((key) => key + 1) }}>Try again</button></div>
+    if (projects.length === 0) return <div className="library-empty-state"><strong>Your first repository starts here</strong><p>Create a project to save a repository in your private workspace.</p></div>
+    return <div className="repository-card-grid">{projects.map((project) => (
+      <article className="repository-library-card" key={project.id}>
+        <div className="repository-card-icon"><Icon name="folder" /></div>
+        <div className="repository-card-copy"><span className="section-kicker">REPOSITORY</span><h2>{project.name}</h2><a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a><small>Added {new Date(project.createdAtUtc).toLocaleDateString()}</small></div>
+        <a className="repository-card-open" href={`#/repositories/${project.id}`} aria-label={`Open ${project.name}`}>Open repository <span>→</span></a>
+      </article>
+    ))}</div>
+  }
+
+  const gatedPage = (destination: string) => <div className="library-empty-state"><strong>Sign in to continue</strong><p>Your RepoAI workspace is private to your account.</p><a className="inline-action" href="#/overview">Go to Overview to sign in</a><button className="text-action" type="button" onClick={() => navigate(destination)}>Stay on this page</button></div>
+
+  let pageTitle = routeIsOverview ? 'Overview' : routeIsRepositories ? 'Repositories' : routeIsConversations ? 'Conversations' : routeIsVideos ? 'Videos' : selectedProject?.name ?? 'Repository'
+  if (isRepositoryRoute && repositoryPage === 'analysis') pageTitle = `${selectedProject?.name ?? 'Repository'} · Analysis`
+  if (isConversationRoute) pageTitle = isChatRoute ? 'Conversation' : `${selectedProject?.name ?? 'Repository'} · Conversations`
+  if (isRepositoryRoute && repositoryPage === 'videos') pageTitle = `${selectedProject?.name ?? 'Repository'} · Videos`
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="#home" aria-label="RepoAI home">
-          <span className="brand-mark"><Icon name="mark" /></span>
-          <span>repo<span className="brand-accent">ai</span></span>
-        </a>
-
+        <a className="brand" href="#/overview" aria-label="RepoAI home"><span className="brand-mark"><Icon name="mark" /></span><span>repo<span className="brand-accent">ai</span></span></a>
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="main-nav" aria-label="Main navigation">
-          <a className="nav-link active" href="#home"><Icon name="grid" />Overview</a>
-          <span className="nav-link disabled"><Icon name="folder" />Repositories<span className="nav-soon">SOON</span></span>
-          <span className="nav-link disabled"><Icon name="film" />Videos<span className="nav-soon">SOON</span></span>
-          <span className="nav-link disabled"><Icon name="chat" />Conversations<span className="nav-soon">SOON</span></span>
+          {workspaceLink('/overview', 'Overview', 'grid', routeIsOverview)}
+          {workspaceLink('/repositories', 'Repositories', 'folder', routeIsRepositories || isRepositoryRoute)}
+          {workspaceLink('/videos', 'Videos', 'film', routeIsVideos)}
+          {workspaceLink('/conversations', 'Conversations', 'chat', routeIsConversations || isConversationRoute)}
         </nav>
-
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <span className="note-icon"><Icon name="spark" /></span>
-            <p>Your codebase,<br /><strong>made understandable.</strong></p>
-          </div>
-          <a className="github-link" href="https://github.com" target="_blank" rel="noreferrer">
-            <Icon name="github" /> Built for GitHub repositories <Icon name="arrow" />
-          </a>
+          <div className="sidebar-note"><span className="note-icon"><Icon name="spark" /></span><p>Your codebase,<br /><strong>made understandable.</strong></p></div>
+          <a className="github-link" href="https://github.com" target="_blank" rel="noreferrer"><Icon name="github" /> Built for GitHub repositories <Icon name="arrow" /></a>
           <div className="sidebar-version">REPOAI · EARLY ACCESS</div>
         </div>
       </aside>
 
-      <main id="home" className="main-content">
+      <main className="main-content">
         <header className="topbar">
-          <div className="breadcrumb"><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>Overview</strong></div>
+          <div className="breadcrumb"><a href="#/overview">Workspace</a><span className="breadcrumb-slash">/</span><strong>{pageTitle}</strong></div>
           <div className={`api-pill ${apiStatus}`}><span className="status-dot" />{apiMessage}</div>
         </header>
 
         <div className="page-content">
-          <section className="welcome-row">
-            <div>
-              <div className="eyebrow"><span className="eyebrow-line" /> REPOSITORY INTELLIGENCE, REIMAGINED</div>
-              <h1>Every codebase has<br /><span>a story to tell.</span></h1>
-              <p className="welcome-copy">Turn complex repositories into clear architecture, cinematic walkthroughs, and answers you can trust.</p>
-            </div>
-            <div className="hero-art" aria-hidden="true">
-              <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-              <div className="hero-core"><Icon name="mark" /></div>
-              <div className="orbit-node node-one" /><div className="orbit-node node-two" /><div className="orbit-node node-three" />
-              <span className="hero-caption">CODE → CLARITY</span>
-            </div>
-          </section>
+          {routeIsOverview && <>
+            <section className="welcome-row">
+              <div><div className="eyebrow"><span className="eyebrow-line" /> REPOSITORY INTELLIGENCE, REIMAGINED</div><h1>Every codebase has<br /><span>a story to tell.</span></h1><p className="welcome-copy">Turn complex repositories into clear architecture, cinematic walkthroughs, and answers you can trust.</p></div>
+              <div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="hero-core"><Icon name="mark" /></div><div className="orbit-node node-one" /><div className="orbit-node node-two" /><div className="orbit-node node-three" /><span className="hero-caption">CODE → CLARITY</span></div>
+            </section>
+            <section className="connect-card" aria-labelledby="connect-title">
+              <div className="connect-heading"><div className="step-number">01</div><div><div className="section-kicker">START WITH A REPOSITORY</div><h2 id="connect-title">Bring your codebase into focus</h2><p>Paste a public Git repository URL to check its format before importing.</p></div></div>
+              <form className="repository-form" onSubmit={validateRepository}>
+                <label className="visually-hidden" htmlFor="repository-url">Git repository URL</label><span className="input-icon"><Icon name="github" /></span>
+                <input id="repository-url" type="url" required maxLength={2048} placeholder="https://github.com/owner/repository" value={repositoryUrl} onChange={(event) => { setRepositoryUrl(event.target.value); setValidation(null); setValidationError('') }} />
+                <button type="submit" disabled={isValidating || apiStatus === 'offline'}>{isValidating ? 'Checking…' : 'Check repository'} <Icon name="arrow" /></button>
+              </form>
+              <p className="form-footnote"><span className="lock-icon">◇</span> URL format check only. RepoAI has not fetched or imported this repository.</p>
+              {validation && <div className="feedback success" role="status"><span className="feedback-icon">✓</span><div><strong>URL format looks good</strong><span>{validation.host} · Reachability was not checked</span></div></div>}
+              {validationError && <div className="feedback error" role="alert">{validationError}</div>}
+            </section>
+            <section className="overview-shortcuts">
+              <article><span className="section-kicker">YOUR WORKSPACE</span><strong>{signIn ? `${projects.length} repositories` : 'Private workspace'}</strong><a href="#/repositories">Browse repositories <span>→</span></a></article>
+              <article><span className="section-kicker">SAVED CHATS</span><strong>Repository conversations</strong><a href="#/conversations">Open conversations <span>→</span></a></article>
+              <article><span className="section-kicker">VIDEO EXPLANATIONS</span><strong>Coming soon</strong><a href="#/videos">Explore video workspace <span>→</span></a></article>
+            </section>
+            {accountPanel}
+          </>}
 
-          <section className="connect-card" aria-labelledby="connect-title">
-            <div className="connect-heading">
-              <div className="step-number">01</div>
-              <div>
-                <div className="section-kicker">START WITH A REPOSITORY</div>
-                <h2 id="connect-title">Bring your codebase into focus</h2>
-                <p>Paste a public Git repository URL to check its format before importing.</p>
-              </div>
-            </div>
-            <form className="repository-form" onSubmit={validateRepository}>
-              <label className="visually-hidden" htmlFor="repository-url">Git repository URL</label>
-              <span className="input-icon"><Icon name="github" /></span>
-              <input
-                id="repository-url"
-                type="url"
-                required
-                maxLength={2048}
-                placeholder="https://github.com/owner/repository"
-                value={repositoryUrl}
-                onChange={(event) => {
-                  setRepositoryUrl(event.target.value)
-                  setValidation(null)
-                  setValidationError('')
-                }}
-              />
-              <button type="submit" disabled={isValidating || apiStatus === 'offline'}>
-                {isValidating ? 'Checking…' : 'Check repository'} <Icon name="arrow" />
-              </button>
-            </form>
-            <p className="form-footnote"><span className="lock-icon">◇</span> URL format check only. RepoAI has not fetched or imported this repository.</p>
-            {validation && (
-              <div className="feedback success" role="status">
-                <span className="feedback-icon">✓</span>
-                <div><strong>URL format looks good</strong><span>{validation.host} · Reachability was not checked</span></div>
-              </div>
-            )}
-            {validationError && <div className="feedback error" role="alert">{validationError}</div>}
-          </section>
+          {routeIsRepositories && <section className="library-page" aria-labelledby="repositories-title">
+            <div className="library-heading-row"><div><span className="section-kicker">YOUR CODEBASES</span><h1 id="repositories-title">Repositories</h1><p>Each repository has its own analysis, conversations, and video workspace.</p></div><div className="project-heading-actions"><span className="count-badge">{projects.length}</span>{signIn && <button className="new-project-button" type="button" onClick={() => { setCreateProjectError(''); setIsProjectFormOpen((open) => !open) }}>{isProjectFormOpen ? 'Cancel' : 'Add repository'}</button>}</div></div>
+            {projectForm}
+            {renderProjectStatus()}
+          </section>}
 
-          <section className="lower-grid">
-            <div className="empty-card">
-              <div className="empty-card-top">
-                <div><div className="section-kicker">YOUR WORKSPACE</div><h2>Projects</h2></div>
-                <div className="project-heading-actions">
-                  <span className="count-badge" aria-label={`${projects.length} projects`}>{projects.length}</span>
-                  {signIn && (
-                    <button
-                      className="new-project-button"
-                      type="button"
-                      onClick={() => {
-                        setCreateProjectError('')
-                        setIsProjectFormOpen((isOpen) => !isOpen)
-                      }}
-                    >
-                      {isProjectFormOpen ? 'Cancel' : 'New project'}
-                    </button>
-                  )}
-                </div>
-              </div>
+          {routeIsConversations && (signIn
+            ? <ConversationLibraryPage projects={projects} authorization={authorization} onUnauthorized={handleExpiredToken} onOpenConversation={handleOpenConversation} />
+            : gatedPage('/conversations'))}
 
-              {signIn && isProjectFormOpen && (
-                <form className="project-form" onSubmit={createProject}>
-                  <label htmlFor="project-name">Project name</label>
-                  <input
-                    id="project-name"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={200}
-                    placeholder="e.g. Payments service"
-                    value={projectName}
-                    onChange={(event) => setProjectName(event.target.value)}
-                  />
-                  <label htmlFor="project-repository-url">Git repository URL</label>
-                  <input
-                    id="project-repository-url"
-                    type="url"
-                    required
-                    maxLength={2048}
-                    placeholder="https://github.com/owner/repository"
-                    value={projectRepositoryUrl}
-                    onChange={(event) => setProjectRepositoryUrl(event.target.value)}
-                  />
-                  <button type="submit" disabled={isCreatingProject}>
-                    {isCreatingProject ? 'Creating…' : 'Create project'}
-                  </button>
-                  {createProjectError && <p className="project-form-error" role="alert">{createProjectError}</p>}
-                </form>
-              )}
+          {routeIsVideos && !isRepositoryRoute && <section className="library-page"><div className="library-heading-row"><div><span className="section-kicker">VIDEO LIBRARY</span><h1>Videos</h1><p>Repository walkthrough videos will be organized here by repository.</p></div></div><div className="library-empty-state video-coming-soon"><span className="video-placeholder-icon"><Icon name="film" /></span><strong>Video generation is coming next</strong><p>Phase 9 will prepare evidence-backed storyboards. LTX video generation follows in Phase 10.</p><a className="inline-action" href="#/repositories">Choose a repository</a></div></section>}
 
-              {!signIn && (
-                <div className="empty-state">
-                  <div className="empty-illustration"><span className="empty-square square-back" /><span className="empty-square square-front"><Icon name="folder" /></span><span className="empty-star">✳</span></div>
-                  <strong>Sign in to view your projects</strong>
-                  <p>Your projects are private to your RepoAI account.</p>
-                </div>
-              )}
-              {signIn && projectLoadStatus === 'loading' && <p className="project-message" role="status">Loading your projects…</p>}
-              {signIn && projectLoadStatus === 'error' && (
-                <div className="project-load-error" role="alert">
-                  <p>{projectLoadError}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProjectLoadError('')
-                      setProjectLoadStatus('loading')
-                      setProjectReloadKey((key) => key + 1)
-                    }}
-                  >
-                    Try again
-                  </button>
-                </div>
-              )}
-              {signIn && projectLoadStatus === 'loaded' && projects.length === 0 && (
-                <div className="empty-state">
-                  <div className="empty-illustration"><span className="empty-square square-back" /><span className="empty-square square-front"><Icon name="folder" /></span><span className="empty-star">✳</span></div>
-                  <strong>Your first project starts here</strong>
-                  <p>Create a project to save its repository in your private workspace.</p>
-                </div>
-              )}
-              {signIn && projectLoadStatus === 'loaded' && projects.length > 0 && (
-                <ul className="project-list" aria-label="Your projects">
-                  {projects.map((project) => (
-                    <li className="project-list-item project-card" key={project.id}>
-                      <div className="project-list-item-heading">
-                        <span className="project-folder-icon"><Icon name="folder" /></span>
-                        <span className="project-list-copy">
-                          <strong>{project.name}</strong>
-                          <a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a>
-                        </span>
-                        <time dateTime={project.createdAtUtc}>{new Date(project.createdAtUtc).toLocaleDateString()}</time>
-                      </div>
-                      <ProjectImportPanel
-                        projectId={project.id}
-                        authorization={`${signIn.tokenType} ${signIn.accessToken}`}
-                        onUnauthorized={handleExpiredToken}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {isRepositoryRoute && !signIn && gatedPage(`/repositories/${routeSegments[1]}`)}
+          {isRepositoryRoute && signIn && !selectedProject && (projectLoadStatus === 'loading' || projectLoadStatus === 'idle'
+            ? <p className="library-message">Loading repository…</p>
+            : <div className="library-empty-state"><strong>Repository not found</strong><p>It may have been removed, or it may belong to another account.</p><a className="inline-action" href="#/repositories">Back to repositories</a></div>)}
 
-            <aside className="setup-card">
-              <div className="setup-icon"><Icon name="spark" /></div>
-              <div className="section-kicker">ACCOUNT SETUP</div>
-              <h2>{signIn ? 'You’re signed in' : 'Make it yours'}</h2>
-              {signIn ? (
-                <>
-                  <p className="signed-in-name">{signIn.displayName}</p>
-                  {signIn.email && <p className="signed-in-email">{signIn.email}</p>}
-                  <div className="setup-divider" />
-                  <p className="setup-detail">Your RepoAI access token is held in this tab’s memory only and expires after 15 minutes.</p>
-                  <button
-                    className="clear-sign-in"
-                    type="button"
-                    onClick={() => {
-                      window.google?.accounts?.id?.disableAutoSelect()
-                      setSignIn(null)
-                      setProjects([])
-                      setProjectLoadStatus('idle')
-                      setProjectLoadError('')
-                      setIsProjectFormOpen(false)
-                    }}
-                  >
-                    Clear sign-in
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p>Google sign-in connects your account to a private RepoAI workspace.</p>
-                  <div className="setup-status">
-                    <span className={googleClientId ? 'setup-status-dot configured' : 'setup-status-dot'} />
-                    {googleClientId ? 'Ready to connect with Google' : 'Google Client ID is missing'}
-                  </div>
-                  {googleClientId ? (
-                    <>
-                      <div className="google-button" ref={setGoogleButtonContainer} aria-busy={isSigningIn} />
-                      {isSigningIn && <p className="auth-progress" role="status">Verifying your Google account…</p>}
-                      {googleScriptError && <p className="auth-error" role="alert">{googleScriptError}</p>}
-                      {signInError && <p className="auth-error" role="alert">{signInError}</p>}
-                      <p className="setup-detail">Google verifies your account; RepoAI creates a short-lived token for this tab.</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="setup-divider" />
-                      <p className="setup-detail">Set VITE_GOOGLE_CLIENT_ID in frontend/.env.local, then restart Vite to enable Google sign-in.</p>
-                    </>
-                  )}
-                </>
-              )}
-            </aside>
-          </section>
+          {isRepositoryRoute && selectedProject && <>
+            <section className="repository-workspace-heading"><div className="repository-workspace-icon"><Icon name="folder" /></div><div><span className="section-kicker">REPOSITORY WORKSPACE</span><h1>{selectedProject.name}</h1><a href={selectedProject.repositoryUrl} target="_blank" rel="noreferrer">{selectedProject.repositoryUrl}</a></div><a className="repository-back-link" href="#/repositories">← All repositories</a></section>
+            <nav className="repository-tabs" aria-label="Repository sections">
+              <a className={repositoryPage === 'overview' ? 'active' : ''} href={`#/repositories/${selectedProject.id}`}>Overview</a>
+              <a className={repositoryPage === 'analysis' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/analysis`}>Repository analysis</a>
+              <a className={isConversationRoute ? 'active' : ''} href={`#/repositories/${selectedProject.id}/conversations`}>Conversations</a>
+              <a className={repositoryPage === 'videos' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/videos`}>Videos</a>
+            </nav>
+            {repositoryPage === 'overview' && <section className="repository-overview-card"><div><span className="section-kicker">PROJECT OVERVIEW</span><h2>Understand this codebase</h2><p>Import a snapshot to inspect its files and architecture, or open a conversation to ask evidence-grounded questions.</p></div><div className="repository-overview-actions"><a href={`#/repositories/${selectedProject.id}/analysis`}>Import &amp; analyze <span>→</span></a><a href={`#/repositories/${selectedProject.id}/conversations`}>Open conversations <span>→</span></a><a href={`#/repositories/${selectedProject.id}/videos`}>Video workspace <span>→</span></a></div></section>}
+            {repositoryPage === 'analysis' && signIn && <ProjectImportPanel key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
+            {isConversationRoute && signIn && <ProjectChatPanel key={`${selectedProject.id}-${conversationId ?? 'list'}`} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} view={isChatRoute ? 'chat' : 'list'} conversationId={conversationId} onOpenConversation={(id) => handleOpenConversation(selectedProject.id, id)} onBack={() => navigate(`/repositories/${selectedProject.id}/conversations`)} />}
+            {repositoryPage === 'videos' && <section className="library-empty-state video-coming-soon"><span className="video-placeholder-icon"><Icon name="film" /></span><strong>Videos for {selectedProject.name}</strong><p>Storyboard preparation is the next product phase; model-driven LTX rendering will follow it. Your future videos will be collected here.</p><a className="inline-action" href={`#/repositories/${selectedProject.id}/analysis`}>Go to repository analysis</a></section>}
+          </>}
 
           <footer className="page-footer"><span>Built to make the architecture behind the code visible.</span><span>REPOAI © 2026</span></footer>
         </div>

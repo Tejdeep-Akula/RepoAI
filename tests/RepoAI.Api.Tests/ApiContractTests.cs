@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using RepoAI.Application.Chat;
 using RepoAI.Application.Jobs;
 using RepoAI.Domain.Entities;
 using RepoAI.Infrastructure.Persistence;
@@ -109,6 +110,17 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             (await client.GetAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.PostAsync($"/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/conversations")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync($"/api/v1/projects/{projectId}/conversations",
+                new { snapshotId = Guid.NewGuid() })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.GetAsync($"/api/v1/projects/{projectId}/conversations/{Guid.NewGuid()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync(
+                $"/api/v1/projects/{projectId}/conversations/{Guid.NewGuid()}/messages/stream",
+                new { content = "Explain the architecture" })).StatusCode);
     }
 
     [Fact]
@@ -204,6 +216,118 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
+    public async Task ChatConversationsAreBoundToAnOwnersProjectAndSnapshot()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RepoAIDbContext>();
+        var repository = scope.ServiceProvider.GetRequiredService<IChatConversationRepository>();
+        var conversationService = scope.ServiceProvider.GetRequiredService<ChatConversationService>();
+        var owner = new User
+        {
+            GoogleSubject = $"chat-test-{Guid.NewGuid():N}",
+            DisplayName = "Chat test owner"
+        };
+        var otherOwner = new User
+        {
+            GoogleSubject = $"chat-test-{Guid.NewGuid():N}",
+            DisplayName = "Other chat test owner"
+        };
+        var project = new Project
+        {
+            OwnerId = owner.Id,
+            Name = "Chat test project",
+            RepositoryUrl = "https://github.com/repoai-tests/chat"
+        };
+        var snapshot = new RepositorySnapshot
+        {
+            ProjectId = project.Id,
+            RepositoryUrl = project.RepositoryUrl,
+            CommitSha = "0123456789abcdef0123456789abcdef01234567",
+            ResolvedRef = "main",
+            DefaultBranch = "main"
+        };
+        dbContext.Users.AddRange(owner, otherOwner);
+        dbContext.Projects.Add(project);
+        dbContext.RepositorySnapshots.Add(snapshot);
+        await dbContext.SaveChangesAsync();
+
+        var conversation = await conversationService.CreateAsync(
+            owner.Id, project.Id, snapshot.Id, "  Architecture questions  ", default);
+
+        Assert.NotNull(conversation);
+        Assert.Equal("Architecture questions", conversation.Title);
+        Assert.Null(await repository.CreateForOwnerAsync(
+            otherOwner.Id, project.Id, snapshot.Id, "Unauthorized", default));
+        Assert.Null(await repository.CreateForOwnerAsync(
+            owner.Id, project.Id, Guid.NewGuid(), "Wrong snapshot", default));
+        Assert.Single(await repository.ListForProjectOwnerAsync(owner.Id, project.Id, default));
+        Assert.Empty(await repository.ListForProjectOwnerAsync(otherOwner.Id, project.Id, default));
+        Assert.Null(await repository.FindForProjectOwnerAsync(
+            otherOwner.Id, project.Id, conversation.Id, default));
+        Assert.Empty(await repository.ListMessagesForOwnerAsync(
+            owner.Id, project.Id, conversation.Id, default));
+
+        var fakeModel = new RecordingChatModel("The entry point is [C1].");
+        var groundedChat = new ChatConversationService(
+            repository,
+            new FixedEvidenceRetriever(),
+            fakeModel);
+        var events = new List<ChatStreamEvent>();
+        await foreach (var item in groundedChat.StreamAnswerAsync(
+            owner.Id, project.Id, conversation.Id, "Where is the entry point?", default))
+        {
+            events.Add(item);
+        }
+
+        Assert.Contains(events, item => item.Type == "delta" && item.Text == "The entry point is [C1].");
+        var completed = Assert.Single(events, item => item.Type == "complete");
+        Assert.Equal("C1", Assert.Single(completed.Citations!).Id);
+        Assert.Contains("src/main.ts:4-9", fakeModel.LastPrompt);
+        var followUpEvents = new List<ChatStreamEvent>();
+        await foreach (var item in groundedChat.StreamAnswerAsync(
+            owner.Id, project.Id, conversation.Id, "What does it call?", default))
+        {
+            followUpEvents.Add(item);
+        }
+        Assert.Contains("Where is the entry point?", fakeModel.LastPrompt);
+        Assert.Contains("The entry point is [C1].", fakeModel.LastPrompt);
+        Assert.Single(followUpEvents, item => item.Type == "complete");
+
+        var savedMessages = await repository.ListMessagesForOwnerAsync(owner.Id, project.Id, conversation.Id, default);
+        Assert.Equal(["user", "assistant", "user", "assistant"], savedMessages.Select(item => item.Role));
+        Assert.Contains("src/main.ts", savedMessages[1].CitationsJson);
+        Assert.Equal("Architecture questions", (await repository.FindForProjectOwnerAsync(
+            owner.Id, project.Id, conversation.Id, default))?.Title);
+
+        dbContext.Projects.Remove(project);
+        dbContext.Users.RemoveRange(owner, otherOwner);
+        await dbContext.SaveChangesAsync();
+    }
+
+    private sealed class FixedEvidenceRetriever : IRepositoryEvidenceRetriever
+    {
+        public Task<IReadOnlyList<RepositoryEvidenceChunk>> RetrieveAsync(
+            Guid snapshotId, string question, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<RepositoryEvidenceChunk>>(
+            [new RepositoryEvidenceChunk("src/main.ts", 4, 9, "export function start() {}", 12)]);
+    }
+
+    private sealed class RecordingChatModel(string answer) : IRepositoryChatModel
+    {
+        public string ModelId => "test-model";
+        public string LastPrompt { get; private set; } = string.Empty;
+
+        public async IAsyncEnumerable<string> StreamResponseAsync(
+            IReadOnlyList<ChatPromptMessage> messages,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            LastPrompt = string.Join("\n", messages.Select(message => message.Content));
+            await Task.Yield();
+            yield return answer;
+        }
+    }
+
+    [Fact]
     public async Task SwaggerAndOpenApiDescribeSuccessAndValidationErrors()
     {
         Assert.Contains("swagger-ui", await client.GetStringAsync("/swagger/index.html"));
@@ -228,6 +352,12 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/files", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/architecture", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/conversations", out _));
+        Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/conversations/{conversationId}", out _));
+        var streamChat = jobPaths.GetProperty(
+            "/api/v1/projects/{projectId}/conversations/{conversationId}/messages/stream").GetProperty("post");
+        Assert.True(streamChat.GetProperty("responses").TryGetProperty("200", out _));
+        Assert.True(streamChat.GetProperty("responses").TryGetProperty("401", out _));
 
         var protectedOperation = jobPaths.GetProperty("/api/v1/projects/{projectId}").GetProperty("get");
         Assert.Contains(protectedOperation.GetProperty("security").EnumerateArray(), requirement =>
