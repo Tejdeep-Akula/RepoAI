@@ -182,7 +182,7 @@ builder.Services.AddOpenApi("v1", options =>
         document.Info.Title = "RepoAI API";
         document.Info.Version = "v1";
         document.Info.Description =
-            "Repository-to-video API with Google sign-in, owner-scoped projects, status, " +
+            "Repository analysis and LLM-powered explanation API with Google sign-in, owner-scoped projects, status, " +
             "and stateless repository URL syntax validation. Validation does not fetch, " +
             "import, or verify the existence of a repository.";
         return Task.CompletedTask;

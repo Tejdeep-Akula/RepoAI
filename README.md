@@ -1,6 +1,6 @@
 # RepoAI
 
-A repository-to-video application with code-grounded conversational chat.
+A repository analysis and explanation application with code-grounded LLM chat.
 Implementation follows [PHASES.md](PHASES.md), one approved phase at a time.
 
 ## Project structure
@@ -59,11 +59,11 @@ checks syntax only; it does not fetch or import a repository. Google Identity
 Services now sends its ID token to the .NET sign-in endpoint; the returned
 15-minute RepoAI access token is kept in browser memory only. The Google Client
 Secret is not used. After sign-in, the workspace provides separate Repositories,
-Conversations, and Videos destinations. Repositories open an individual
-repository workspace with overview, analysis, conversations, and video sections.
-Saved conversations are grouped by repository; selecting one opens a dedicated
-chat page. Each repository's Videos workspace can generate and review an
-evidence-grounded storyboard from a completed architecture analysis. Project
+Conversations, and Storyboards destinations. Repositories open an individual
+workspace with overview, analysis, storyboards, and conversations. Saved
+conversations are grouped by repository; selecting one opens a dedicated chat
+page. Each repository's Storyboards workspace can generate and review an
+evidence-grounded explanation plan from a completed architecture analysis. Project
 creation is available from the Repositories page. The JWT is sent as a bearer
 token only for project API calls.
 
@@ -442,10 +442,10 @@ Retrieval is lexical and bounded (candidate/file/byte/chunk limits), so answers
 can miss relevant code; citations should be checked against source. Repository
 files are never executed by this integration.
 
-## Phase 9: Evidence-grounded storyboards
+## Phase 9: Evidence-grounded architecture storyboards
 
 For an imported snapshot with completed architecture analysis, open that
-repository's **Videos** workspace and select **Generate storyboard**. The API
+repository's **Storyboards** workspace and select **Generate storyboard**. The API
 enqueues a durable `repository.storyboard` job; the Worker sends the saved
 architecture report and a bounded list of source citations to the configured
 Ollama model. It does not upload every source file. Generated scene evidence is
@@ -454,8 +454,8 @@ saved in PostgreSQL, tied to the immutable snapshot and commit. The UI displays
 scene purpose, narration, animation directions, duration, and file/line
 citations, and supports regeneration.
 
-This phase prepares and reviews the explanation plan; it does not render video.
-Model-generated text still needs human review. Run the API and Worker, and ensure
+This feature prepares and reviews the explanation plan. Model-generated text still
+needs human review. Run the API and Worker, and ensure
 the configured Ollama endpoint and model are available for generation. Database
 migrations apply at application startup.
 
@@ -485,5 +485,6 @@ terminal. Project-specific `.vscode` configuration is not included.
 
 Phases 1–9 are complete, including the extended best-effort static architecture
 analysis, Ollama-backed evidence-grounded repository chat, and storyboard review.
-LTX video generation follows. The architecture graph is evidence-backed static
+Phase 10 is quality, performance, and security validation. Video generation is not
+part of the current product scope. The architecture graph is evidence-backed static
 analysis, not a complete runtime call graph. No login-session table is introduced.

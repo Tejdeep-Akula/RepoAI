@@ -178,7 +178,7 @@ function App() {
   const routeIsOverview = routeSegments.length === 0 || routeSegments[0] === 'overview'
   const routeIsRepositories = routeSegments[0] === 'repositories' && !isRepositoryRoute
   const routeIsConversations = routeSegments[0] === 'conversations'
-  const routeIsVideos = routeSegments[0] === 'videos' || (isRepositoryRoute && repositoryPage === 'videos')
+  const routeIsStoryboards = routeSegments[0] === 'storyboards' || (isRepositoryRoute && repositoryPage === 'storyboards')
   const authorization = signIn ? `${signIn.tokenType} ${signIn.accessToken}` : ''
 
   const handleOpenConversation = (projectId: string, id: string) =>
@@ -510,10 +510,10 @@ function App() {
 
   const gatedPage = (destination: string) => <div className="library-empty-state"><strong>Sign in to continue</strong><p>Your RepoAI workspace is private to your account.</p><a className="inline-action" href="#/overview">Go to Overview to sign in</a><button className="text-action" type="button" onClick={() => navigate(destination)}>Stay on this page</button></div>
 
-  let pageTitle = routeIsOverview ? 'Overview' : routeIsRepositories ? 'Repositories' : routeIsConversations ? 'Conversations' : routeIsVideos ? 'Videos' : selectedProject?.name ?? 'Repository'
+  let pageTitle = routeIsOverview ? 'Overview' : routeIsRepositories ? 'Repositories' : routeIsConversations ? 'Conversations' : routeIsStoryboards ? 'Storyboards' : selectedProject?.name ?? 'Repository'
   if (isRepositoryRoute && repositoryPage === 'analysis') pageTitle = `${selectedProject?.name ?? 'Repository'} · Analysis`
   if (isConversationRoute) pageTitle = isChatRoute ? 'Conversation' : `${selectedProject?.name ?? 'Repository'} · Conversations`
-  if (isRepositoryRoute && repositoryPage === 'videos') pageTitle = `${selectedProject?.name ?? 'Repository'} · Videos`
+  if (isRepositoryRoute && repositoryPage === 'storyboards') pageTitle = `${selectedProject?.name ?? 'Repository'} · Storyboards`
 
   return (
     <div className="app-shell">
@@ -523,7 +523,7 @@ function App() {
         <nav className="main-nav" aria-label="Main navigation">
           {workspaceLink('/overview', 'Overview', 'grid', routeIsOverview)}
           {workspaceLink('/repositories', 'Repositories', 'folder', routeIsRepositories || isRepositoryRoute)}
-          {workspaceLink('/videos', 'Videos', 'film', routeIsVideos)}
+          {workspaceLink('/storyboards', 'Storyboards', 'grid', routeIsStoryboards)}
           {workspaceLink('/conversations', 'Conversations', 'chat', routeIsConversations || isConversationRoute)}
         </nav>
         <div className="sidebar-bottom">
@@ -542,7 +542,7 @@ function App() {
         <div className="page-content">
           {routeIsOverview && <>
             <section className="welcome-row">
-              <div><div className="eyebrow"><span className="eyebrow-line" /> REPOSITORY INTELLIGENCE, REIMAGINED</div><h1>Every codebase has<br /><span>a story to tell.</span></h1><p className="welcome-copy">Turn complex repositories into clear architecture, cinematic walkthroughs, and answers you can trust.</p></div>
+              <div><div className="eyebrow"><span className="eyebrow-line" /> REPOSITORY INTELLIGENCE, REIMAGINED</div><h1>Every codebase has<br /><span>a story to tell.</span></h1><p className="welcome-copy">Turn complex repositories into clear architecture explanations and answers you can verify against source evidence.</p></div>
               <div className="hero-art" aria-hidden="true"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="hero-core"><Icon name="mark" /></div><div className="orbit-node node-one" /><div className="orbit-node node-two" /><div className="orbit-node node-three" /><span className="hero-caption">CODE → CLARITY</span></div>
             </section>
             <section className="connect-card" aria-labelledby="connect-title">
@@ -559,13 +559,13 @@ function App() {
             <section className="overview-shortcuts">
               <article><span className="section-kicker">YOUR WORKSPACE</span><strong>{signIn ? `${projects.length} repositories` : 'Private workspace'}</strong><a href="#/repositories">Browse repositories <span>→</span></a></article>
               <article><span className="section-kicker">SAVED CHATS</span><strong>Repository conversations</strong><a href="#/conversations">Open conversations <span>→</span></a></article>
-              <article><span className="section-kicker">VIDEO EXPLANATIONS</span><strong>Coming soon</strong><a href="#/videos">Explore video workspace <span>→</span></a></article>
+              <article><span className="section-kicker">LLM EXPLANATIONS</span><strong>Evidence-grounded storyboards</strong><a href="#/storyboards">Explore storyboards <span>→</span></a></article>
             </section>
             {accountPanel}
           </>}
 
           {routeIsRepositories && <section className="library-page" aria-labelledby="repositories-title">
-            <div className="library-heading-row"><div><span className="section-kicker">YOUR CODEBASES</span><h1 id="repositories-title">Repositories</h1><p>Each repository has its own analysis, conversations, and video workspace.</p></div><div className="project-heading-actions"><span className="count-badge">{projects.length}</span>{signIn && <button className="new-project-button" type="button" onClick={() => { setCreateProjectError(''); setIsProjectFormOpen((open) => !open) }}>{isProjectFormOpen ? 'Cancel' : 'Add repository'}</button>}</div></div>
+            <div className="library-heading-row"><div><span className="section-kicker">YOUR CODEBASES</span><h1 id="repositories-title">Repositories</h1><p>Each repository has its own analysis, storyboards, and conversations.</p></div><div className="project-heading-actions"><span className="count-badge">{projects.length}</span>{signIn && <button className="new-project-button" type="button" onClick={() => { setCreateProjectError(''); setIsProjectFormOpen((open) => !open) }}>{isProjectFormOpen ? 'Cancel' : 'Add repository'}</button>}</div></div>
             {projectForm}
             {renderProjectStatus()}
           </section>}
@@ -574,7 +574,7 @@ function App() {
             ? <ConversationLibraryPage projects={projects} authorization={authorization} onUnauthorized={handleExpiredToken} onOpenConversation={handleOpenConversation} />
             : gatedPage('/conversations'))}
 
-          {routeIsVideos && !isRepositoryRoute && <section className="library-page"><div className="library-heading-row"><div><span className="section-kicker">VIDEO WORKSPACES</span><h1>Videos</h1><p>Choose a repository to prepare and review its architecture storyboard.</p></div></div>{signIn && projects.length > 0 ? <div className="repository-card-grid">{projects.map((project) => <article className="repository-library-card" key={project.id}><div className="repository-card-icon"><Icon name="film" /></div><div className="repository-card-copy"><span className="section-kicker">VIDEO WORKSPACE</span><h2>{project.name}</h2><a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a></div><a className="repository-card-open" href={`#/repositories/${project.id}/videos`}>Open storyboard <span>→</span></a></article>)}</div> : !signIn ? gatedPage('/videos') : <div className="library-empty-state"><strong>No repositories yet</strong><p>Add a repository to create its storyboard.</p><a className="inline-action" href="#/repositories">Choose a repository</a></div>}</section>}
+          {routeIsStoryboards && !isRepositoryRoute && <section className="library-page"><div className="library-heading-row"><div><span className="section-kicker">LLM EXPLANATIONS</span><h1>Storyboards</h1><p>Choose a repository to create and review an evidence-grounded architecture explanation.</p></div></div>{signIn && projects.length > 0 ? <div className="repository-card-grid">{projects.map((project) => <article className="repository-library-card" key={project.id}><div className="repository-card-icon"><Icon name="grid" /></div><div className="repository-card-copy"><span className="section-kicker">ARCHITECTURE STORYBOARD</span><h2>{project.name}</h2><a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a></div><a className="repository-card-open" href={`#/repositories/${project.id}/storyboards`}>Open storyboard <span>→</span></a></article>)}</div> : !signIn ? gatedPage('/storyboards') : <div className="library-empty-state"><strong>No repositories yet</strong><p>Add a repository to create its storyboard.</p><a className="inline-action" href="#/repositories">Choose a repository</a></div>}</section>}
 
           {isRepositoryRoute && !signIn && gatedPage(`/repositories/${routeSegments[1]}`)}
           {isRepositoryRoute && signIn && !selectedProject && (projectLoadStatus === 'loading' || projectLoadStatus === 'idle'
@@ -587,12 +587,12 @@ function App() {
               <a className={repositoryPage === 'overview' ? 'active' : ''} href={`#/repositories/${selectedProject.id}`}>Overview</a>
               <a className={repositoryPage === 'analysis' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/analysis`}>Repository analysis</a>
               <a className={isConversationRoute ? 'active' : ''} href={`#/repositories/${selectedProject.id}/conversations`}>Conversations</a>
-              <a className={repositoryPage === 'videos' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/videos`}>Videos</a>
+              <a className={repositoryPage === 'storyboards' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/storyboards`}>Storyboards</a>
             </nav>
-            {repositoryPage === 'overview' && <section className="repository-overview-card"><div><span className="section-kicker">PROJECT OVERVIEW</span><h2>Understand this codebase</h2><p>Import a snapshot to inspect its files and architecture, or open a conversation to ask evidence-grounded questions.</p></div><div className="repository-overview-actions"><a href={`#/repositories/${selectedProject.id}/analysis`}>Import &amp; analyze <span>→</span></a><a href={`#/repositories/${selectedProject.id}/conversations`}>Open conversations <span>→</span></a><a href={`#/repositories/${selectedProject.id}/videos`}>Video workspace <span>→</span></a></div></section>}
+            {repositoryPage === 'overview' && <section className="repository-overview-card"><div><span className="section-kicker">PROJECT OVERVIEW</span><h2>Understand this codebase</h2><p>Import a snapshot to inspect its files and architecture, or open a conversation to ask evidence-grounded questions.</p></div><div className="repository-overview-actions"><a href={`#/repositories/${selectedProject.id}/analysis`}>Import &amp; analyze <span>→</span></a><a href={`#/repositories/${selectedProject.id}/conversations`}>Open conversations <span>→</span></a><a href={`#/repositories/${selectedProject.id}/storyboards`}>Create a storyboard <span>→</span></a></div></section>}
             {repositoryPage === 'analysis' && signIn && <ProjectImportPanel key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
             {isConversationRoute && signIn && <ProjectChatPanel key={`${selectedProject.id}-${conversationId ?? 'list'}`} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} view={isChatRoute ? 'chat' : 'list'} conversationId={conversationId} onOpenConversation={(id) => handleOpenConversation(selectedProject.id, id)} onBack={() => navigate(`/repositories/${selectedProject.id}/conversations`)} />}
-            {repositoryPage === 'videos' && signIn && <ProjectStoryboardPage key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
+            {repositoryPage === 'storyboards' && signIn && <ProjectStoryboardPage key={selectedProject.id} projectId={selectedProject.id} authorization={authorization} onUnauthorized={handleExpiredToken} />}
           </>}
 
           <footer className="page-footer"><span>Built to make the architecture behind the code visible.</span><span>REPOAI © 2026</span></footer>

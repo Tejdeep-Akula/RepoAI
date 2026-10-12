@@ -16,7 +16,6 @@ type Storyboard = {
     scenes: { order: number; title: string; purpose: string; narration: string; visualInstructions: string; estimatedDurationSeconds: number; evidence: { path: string; startLine: number | null; endLine: number | null }[] }[]
   }
 }
-
 type Props = { projectId: string; authorization: string; onUnauthorized: () => void }
 
 async function request<T>(url: string, authorization: string, init?: RequestInit): Promise<{ status: number; data: T | null }> {
@@ -120,7 +119,7 @@ function ProjectStoryboardPage({ projectId, authorization, onUnauthorized }: Pro
   }
 
   return <section className="storyboard-page">
-    <div className="storyboard-intro"><div><span className="section-kicker">VIDEO PRE-PRODUCTION</span><h2>Storyboard</h2><p>Build a reviewable, evidence-grounded walkthrough from the saved architecture analysis. This step prepares the video plan; it does not render video yet.</p></div>
+    <div className="storyboard-intro"><div><span className="section-kicker">ARCHITECTURE STORYBOARD</span><h2>Explain this repository</h2><p>Generate an evidence-grounded, scene-by-scene explanation plan from the analyzed architecture. Review its narration, visual directions, and source citations.</p></div>
       <div className="storyboard-controls"><label htmlFor="storyboard-snapshot">Repository snapshot</label><select id="storyboard-snapshot" value={snapshotId} onChange={(event) => { setSnapshotId(event.target.value); setJob(null); void loadStoryboard(event.target.value) }}>
         {snapshots.length === 0 && <option value="">No imported snapshots</option>}
         {snapshots.map((item) => <option key={item.id} value={item.id}>{item.resolvedRef} · {item.commitSha.slice(0, 8)} · {new Date(item.importedAtUtc).toLocaleDateString()}</option>)}
@@ -133,7 +132,7 @@ function ProjectStoryboardPage({ projectId, authorization, onUnauthorized }: Pro
     {storyboard && !loading && <>
       <div className="storyboard-heading"><div><span className="section-kicker">REVIEW DRAFT · {storyboard.model}</span><h3>{storyboard.storyboard.title}</h3><p>{storyboard.storyboard.summary}</p></div><button type="button" onClick={() => void generate()} disabled={generating}>{generating ? 'Generating…' : 'Regenerate'}</button></div>
       <div className="storyboard-scene-list">{storyboard.storyboard.scenes.map((scene) => <article className="storyboard-scene" key={scene.order}><div className="storyboard-scene-number">{String(scene.order).padStart(2, '0')}</div><div className="storyboard-scene-content"><div className="storyboard-scene-title"><div><span className="section-kicker">SCENE {scene.order} · {scene.estimatedDurationSeconds}s</span><h4>{scene.title}</h4></div></div><p className="storyboard-purpose">{scene.purpose}</p><p>{scene.narration}</p><div className="storyboard-visual"><span>VISUAL DIRECTION</span>{scene.visualInstructions}</div><div className="storyboard-evidence"><span>EVIDENCE</span>{scene.evidence.map((source) => <code key={`${source.path}:${source.startLine}:${source.endLine}`}>{source.path}{source.startLine ? `:${source.startLine}${source.endLine && source.endLine !== source.startLine ? `–${source.endLine}` : ''}` : ''}</code>)}</div></div></article>)}</div>
-      <p className="storyboard-disclaimer">Review factual claims and scene evidence before rendering. Model-generated narration can still be mistaken; citations are restricted to evidence in the saved architecture report.</p>
+      <p className="storyboard-disclaimer">Review factual claims and source citations. Model-generated explanations can still be mistaken; citations are restricted to evidence in the saved architecture report.</p>
     </>}
   </section>
 }

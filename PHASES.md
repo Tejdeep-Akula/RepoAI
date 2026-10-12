@@ -141,7 +141,7 @@ PostgreSQL, and the OAuth client configured for the frontend origin.
 ## Phase 6 — Durable background processing
 
 Introduce background workers, persisted job status, progress reporting, retry and
-cancellation behavior. This foundation supports long repository and video tasks.
+cancellation behavior. This foundation supports long-running repository-analysis tasks.
 
 **Status:** Complete — PostgreSQL-backed queue, API contract and Worker host tested locally.
 
@@ -260,7 +260,7 @@ quality or actual Ollama hardware throughput.
 repository snapshot, and receive streamed answers grounded with source citations,
 while project ownership remains enforced.
 
-## Phase 9 — Explanation and video storyboard — Complete
+## Phase 9 — LLM-generated architecture storyboards — Complete
 
 For an imported immutable snapshot with architecture analysis, users can enqueue
 `repository.storyboard` through `POST /api/v1/projects/{projectId}/snapshots/{snapshotId}/storyboard`
@@ -269,48 +269,28 @@ and requires a saved architecture report. The durable Worker sends the report
 and a bounded evidence whitelist—not the full repository contents—to the
 configured Ollama model. Model citations are validated against that whitelist
 before scenes are saved in `repository_storyboards` and tied to their snapshot
-and commit. The repository Videos workspace lets users select snapshots, watch
-job progress, inspect narration/visual directions and source citations, and
+and commit. The repository Storyboards workspace lets users select snapshots,
+watch job progress, inspect narration/visual directions and source citations, and
 regenerate a draft. EF applies the table migration at startup.
 
-This is a human-reviewable storyboard, not a guarantee of factual correctness or
-a rendered video. Citations are limited to evidence already present in static
-analysis; users should verify claims. LTX clip generation and composition remain
-Phase 10.
+This is a human-reviewable architecture explanation plan, not a guarantee of
+factual correctness. Citations are limited to evidence already present in static
+analysis; users should verify claims.
 
 **Verified:** solution build succeeds with zero warnings/errors; all 61 tests
 pass, including storyboard job behavior and unauthenticated endpoint checks;
 frontend lint and production build succeed; EF reports no pending model changes.
 
-## Phase 10 — LTX video generation and composition
-
-Integrate a selected LTX checkpoint through an isolated inference runtime controlled
-by the .NET backend. Generate clips and compose accurate code, diagram labels,
-narration, captions, and final video output. Validate model licensing and hardware
-requirements before committing to the runtime configuration.
-
-**Complete when:** an approved storyboard produces a playable video, with progress,
-failure recovery, and mappings between scenes and repository evidence.
-
-## Phase 11 — Connected video and chat experience
-
-Integrate the video player, scene navigation, captions, and downloads with chat.
-Allow users to ask about the current video segment and jump from answers to related
-code or timestamps.
-
-**Complete when:** users can watch a repository explanation and explore its details
-through persistent, context-aware conversations.
-
-## Phase 12 — Quality, performance, and security validation
+## Phase 10 — Quality, performance, and security validation
 
 Consolidate the tests added throughout development. Evaluate analysis and answer
-accuracy, authorization, job recovery, concurrent chat/video workloads, resource
+accuracy, authorization, job recovery, concurrent chat workloads, resource
 limits, and operational visibility. Measure performance on documented hardware.
 
 **Complete when:** agreed acceptance checks pass and performance limits and remaining
 issues are documented. Testing and security checks also happen within earlier phases.
 
-## Phase 13 — Docker packaging and release
+## Phase 11 — Docker packaging and release
 
 Package the .NET services and document external model dependencies. Provide Docker
 Compose, persistent storage, secrets configuration, setup instructions, and a
