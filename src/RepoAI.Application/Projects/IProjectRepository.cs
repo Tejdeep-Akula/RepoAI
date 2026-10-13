@@ -18,4 +18,9 @@ public interface IProjectRepository
         Guid ownerId,
         Guid projectId,
         CancellationToken cancellationToken);
+
+    Task<ProjectDeletionResult> DeleteForOwnerAsync(
+        Guid ownerId,
+        Guid projectId,
+        CancellationToken cancellationToken);
 }

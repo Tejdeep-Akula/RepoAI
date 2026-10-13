@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+.env
+.env.*
+!.env.example
+**/appsettings*.json
+**/bin*
+**/obj*
+**/node_modules/
+**/dist/
+**/TestResults/
+artifacts/
+data/
+RepoAI-design/

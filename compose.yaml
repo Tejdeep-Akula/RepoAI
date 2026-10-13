@@ -1,4 +1,3 @@
-# Local development database only. Application containers come in Phase 13.
 name: repoai
 
 services:
@@ -21,5 +20,70 @@ services:
       start_period: 10s
     stop_grace_period: 30s
 
+  api:
+    image: ${REPOAI_IMAGE_NAMESPACE:-repoai}/repoai-api:${REPOAI_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.dotnet
+      args:
+        APP_PROJECT: RepoAI.Api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__RepoAI: "Host=postgres;Port=5432;Database=${REPOAI_DB_NAME:-repoai};Username=${REPOAI_DB_USER:-repoai_admin};Password=${REPOAI_DB_PASSWORD:?Set REPOAI_DB_PASSWORD in your local .env file}"
+      Authentication__Google__ClientId: ${REPOAI_GOOGLE_CLIENT_ID:?Set REPOAI_GOOGLE_CLIENT_ID in your local .env file}
+      Authentication__Jwt__SigningKey: ${REPOAI_JWT_SIGNING_KEY:?Set REPOAI_JWT_SIGNING_KEY in your local .env file}
+      Chat__Ollama__Endpoint: ${REPOAI_OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      Chat__Ollama__Model: ${REPOAI_OLLAMA_MODEL:-qwen2.5-coder:7b}
+      RepositoryImport__StorageRoot: /data/repository-content
+    ports:
+      - "127.0.0.1:${REPOAI_API_PORT:-5080}:8080"
+    volumes:
+      - repository-content:/data/repository-content
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    image: ${REPOAI_IMAGE_NAMESPACE:-repoai}/repoai-worker:${REPOAI_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.dotnet
+      args:
+        APP_PROJECT: RepoAI.Worker
+    command: ["RepoAI.Worker.dll"]
+    restart: unless-stopped
+    environment:
+      DOTNET_ENVIRONMENT: Production
+      ConnectionStrings__RepoAI: "Host=postgres;Port=5432;Database=${REPOAI_DB_NAME:-repoai};Username=${REPOAI_DB_USER:-repoai_admin};Password=${REPOAI_DB_PASSWORD:?Set REPOAI_DB_PASSWORD in your local .env file}"
+      Chat__Ollama__Endpoint: ${REPOAI_OLLAMA_ENDPOINT:-http://host.docker.internal:11434}
+      Chat__Ollama__Model: ${REPOAI_OLLAMA_MODEL:-qwen2.5-coder:7b}
+      RepositoryImport__StorageRoot: /data/repository-content
+    volumes:
+      - repository-content:/data/repository-content
+    depends_on:
+      postgres:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    image: ${REPOAI_IMAGE_NAMESPACE:-repoai}/repoai-frontend:${REPOAI_IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_GOOGLE_CLIENT_ID: ${REPOAI_GOOGLE_CLIENT_ID:?Set REPOAI_GOOGLE_CLIENT_ID in your local .env file}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REPOAI_FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - api
+
 volumes:
   pgdata:
+  repository-content:

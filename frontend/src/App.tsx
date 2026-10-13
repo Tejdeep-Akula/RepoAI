@@ -140,6 +140,8 @@ function App() {
   const [projectRepositoryUrl, setProjectRepositoryUrl] = useState('')
   const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [createProjectError, setCreateProjectError] = useState('')
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
+  const [projectDeleteError, setProjectDeleteError] = useState('')
   const [googleScriptError, setGoogleScriptError] = useState('')
   const [googleButtonContainer, setGoogleButtonContainer] = useState<HTMLDivElement | null>(null)
   const googleIdentityInitialized = useRef(false)
@@ -434,6 +436,53 @@ function App() {
     }
   }
 
+  async function deleteProject(project: Project) {
+    if (!signIn || deletingProjectId) return
+
+    const confirmed = window.confirm(
+      `Delete “${project.name}” and all its data? This permanently removes repository snapshots, analysis, storyboards, conversations, and jobs.`,
+    )
+    if (!confirmed) return
+
+    setProjectDeleteError('')
+    setDeletingProjectId(project.id)
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/projects/${project.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `${signIn.tokenType} ${signIn.accessToken}` },
+      })
+
+      if (response.status === 401) {
+        handleExpiredToken()
+        return
+      }
+      if (!response.ok) {
+        let problem: ProblemDetails = {}
+        try {
+          problem = (await response.json()) as ProblemDetails
+        } catch {
+          // Some proxy or network failures do not return a Problem Details body.
+        }
+        throw new Error(explainProblem(problem, 'Could not delete this project.'))
+      }
+
+      setProjects((currentProjects) => currentProjects.filter((item) => item.id !== project.id))
+      if (isRepositoryRoute && routeSegments[1] === project.id) {
+        navigate('/repositories')
+      }
+    } catch (error) {
+      setProjectDeleteError(
+        error instanceof TypeError
+          ? 'Could not reach RepoAI.Api. Check that the API is running.'
+          : error instanceof Error
+            ? error.message
+            : 'Could not delete this project.',
+      )
+    } finally {
+      setDeletingProjectId(null)
+    }
+  }
+
   const workspaceLink = (path: string, label: string, icon: 'grid' | 'folder' | 'film' | 'chat', active: boolean) => (
     <a className={`nav-link ${active ? 'active' : ''}`} href={`#${path}`} key={label}>
       <Icon name={icon} />{label}
@@ -504,6 +553,7 @@ function App() {
         <div className="repository-card-icon"><Icon name="folder" /></div>
         <div className="repository-card-copy"><span className="section-kicker">REPOSITORY</span><h2>{project.name}</h2><a href={project.repositoryUrl} target="_blank" rel="noreferrer">{project.repositoryUrl}</a><small>Added {new Date(project.createdAtUtc).toLocaleDateString()}</small></div>
         <a className="repository-card-open" href={`#/repositories/${project.id}`} aria-label={`Open ${project.name}`}>Open repository <span>→</span></a>
+        <button className="repository-delete-button repository-card-delete" type="button" disabled={deletingProjectId === project.id} onClick={() => void deleteProject(project)}>{deletingProjectId === project.id ? 'Deleting…' : 'Delete project'}</button>
       </article>
     ))}</div>
   }
@@ -568,6 +618,7 @@ function App() {
             <div className="library-heading-row"><div><span className="section-kicker">YOUR CODEBASES</span><h1 id="repositories-title">Repositories</h1><p>Each repository has its own analysis, storyboards, and conversations.</p></div><div className="project-heading-actions"><span className="count-badge">{projects.length}</span>{signIn && <button className="new-project-button" type="button" onClick={() => { setCreateProjectError(''); setIsProjectFormOpen((open) => !open) }}>{isProjectFormOpen ? 'Cancel' : 'Add repository'}</button>}</div></div>
             {projectForm}
             {renderProjectStatus()}
+            {projectDeleteError && <p className="project-delete-error" role="alert">{projectDeleteError}</p>}
           </section>}
 
           {routeIsConversations && (signIn
@@ -582,7 +633,8 @@ function App() {
             : <div className="library-empty-state"><strong>Repository not found</strong><p>It may have been removed, or it may belong to another account.</p><a className="inline-action" href="#/repositories">Back to repositories</a></div>)}
 
           {isRepositoryRoute && selectedProject && <>
-            <section className="repository-workspace-heading"><div className="repository-workspace-icon"><Icon name="folder" /></div><div><span className="section-kicker">REPOSITORY WORKSPACE</span><h1>{selectedProject.name}</h1><a href={selectedProject.repositoryUrl} target="_blank" rel="noreferrer">{selectedProject.repositoryUrl}</a></div><a className="repository-back-link" href="#/repositories">← All repositories</a></section>
+            <section className="repository-workspace-heading"><div className="repository-workspace-icon"><Icon name="folder" /></div><div><span className="section-kicker">REPOSITORY WORKSPACE</span><h1>{selectedProject.name}</h1><a href={selectedProject.repositoryUrl} target="_blank" rel="noreferrer">{selectedProject.repositoryUrl}</a></div><div className="repository-workspace-controls"><a className="repository-back-link" href="#/repositories">← All repositories</a><button className="repository-delete-button" type="button" disabled={deletingProjectId === selectedProject.id} onClick={() => void deleteProject(selectedProject)}>{deletingProjectId === selectedProject.id ? 'Deleting…' : 'Delete project'}</button></div></section>
+            {projectDeleteError && <p className="project-delete-error" role="alert">{projectDeleteError}</p>}
             <nav className="repository-tabs" aria-label="Repository sections">
               <a className={repositoryPage === 'overview' ? 'active' : ''} href={`#/repositories/${selectedProject.id}`}>Overview</a>
               <a className={repositoryPage === 'analysis' ? 'active' : ''} href={`#/repositories/${selectedProject.id}/analysis`}>Repository analysis</a>

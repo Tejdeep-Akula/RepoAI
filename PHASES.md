@@ -5,8 +5,10 @@ describe the planned order; they do not authorize implementation. Before each
 step, we will explain the proposed changes and obtain your approval. A phase may
 contain several separately approved steps.
 
-Phases 1–7 are **Complete** (Phase 7 includes the extended static architecture analysis scope).
-Phase 8 is **Complete**; Phases 9–13 are **Not started**.
+Phases 1–9 are **Complete** (Phase 7 includes the extended static architecture
+analysis scope). Phase 10 is **In progress**. Phase 11's container implementation
+is **verified**; Docker Hub publication remains pending an approved namespace and
+version.
 The existing HLD remains in `RepoAI-design/`.
 
 ## Phase 1 — Project foundation
@@ -116,7 +118,7 @@ projects, while unauthenticated and cross-user access are rejected.
 
 ## Phase 5 — Web application workspace
 
-**Status:** Complete — authenticated project list/create verified in the browser.
+**Status:** Complete — authenticated project list, create, and delete flows are implemented.
 
 Use React with TypeScript for the browser UI and Vite for local development and
 production builds. The local Vite origin is pinned to `http://localhost:5173`;
@@ -129,8 +131,11 @@ Development CORS accepts only `http://localhost:5173`. Google Identity Services
 is wired to `POST /api/v1/auth/google`; the RepoAI bearer token remains in
 browser memory and is not persisted. The Google Client Secret is not used.
 After sign-in, the workspace loads only the caller's projects using the bearer
-token and supports creating projects with a name and HTTPS repository URL.
-Project loading, empty, error, retry and create states are shown in the UI.
+token and supports creating projects with a name and HTTPS repository URL. Users
+can delete an owned project from the repository list or workspace after
+confirming that its repository data, generated results, conversations, and jobs
+will be removed. The API rejects deletion while a background job is active.
+Project loading, empty, error, retry, create, and delete states are shown in the UI.
 
 **Verified:** frontend production build and lint pass. CORS tests cover allowed
 and disallowed origins. Google sign-in was verified locally with the API,
@@ -283,23 +288,39 @@ frontend lint and production build succeed; EF reports no pending model changes.
 
 ## Phase 10 — Quality, performance, and security validation
 
+**Status:** In progress — baseline functional and authorization tests pass; broader
+accuracy, load, performance, and resource-limit measurements remain.
+
 Consolidate the tests added throughout development. Evaluate analysis and answer
 accuracy, authorization, job recovery, concurrent chat workloads, resource
 limits, and operational visibility. Measure performance on documented hardware.
 
+**Verified to date:** 63 backend integration tests pass; frontend lint and
+production build pass. This does not yet constitute the planned performance,
+model-quality, concurrency, or resource-limit evaluation.
+
 **Complete when:** agreed acceptance checks pass and performance limits and remaining
 issues are documented. Testing and security checks also happen within earlier phases.
 
-## Phase 11 — Docker packaging and release
+## Phase 11 — Docker packaging and release — Implementation verified
 
-Package the .NET services and document external model dependencies. Provide Docker
-Compose, persistent storage, secrets configuration, setup instructions, and a
-repeatable release process. Publish versioned images to Docker Hub after approval
-of the target account and release contents.
+Package the API, Worker, and frontend as separate container images. Docker Compose
+provides PostgreSQL, persistent repository-content storage, local-only ports,
+configuration through an ignored `.env` file, and startup dependencies. Ollama
+remains an external model runtime; its endpoint and model are configurable. The
+release instructions build and tag versioned images and publish them to Docker Hub
+only after the owner selects the namespace and approves the release.
 
 **Complete when:** a clean environment can run RepoAI using the documented container
-setup and the approved release images. Local dependency containers may be used in
-earlier phases; this phase covers the complete distribution.
+setup and the release commands produce the expected API, Worker, and frontend images.
+
+**Verified:** API, Worker, and frontend images build locally; Compose validates;
+an isolated stack applied migrations, served the frontend, and returned HTTP 200
+through the frontend's proxied API health route. The API and Worker mount the same
+persistent repository-content volume. Imports created before using that volume
+remain on the host and must be re-imported or migrated into the volume. No images
+have been pushed yet; Docker Hub publication awaits approval of the namespace and
+version.
 
 ## Working agreement
 

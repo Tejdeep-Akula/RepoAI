@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using RepoAI.Application.Chat;
 using RepoAI.Application.Jobs;
+using RepoAI.Application.Projects;
 using RepoAI.Domain.Entities;
 using RepoAI.Infrastructure.Persistence;
 using Xunit;
@@ -92,6 +93,77 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
             (await client.GetAsync($"/api/v1/jobs/{jobId}")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized,
             (await client.DeleteAsync($"/api/v1/jobs/{jobId}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ProjectDeletionRequiresAuthentication()
+    {
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.DeleteAsync($"/api/v1/projects/{Guid.NewGuid()}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task ProjectDeletionRejectsActiveJobsThenRemovesProjectAndRepositoryData()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<RepoAIDbContext>();
+        var repository = scope.ServiceProvider.GetRequiredService<IProjectRepository>();
+        var owner = new User
+        {
+            GoogleSubject = $"project-delete-test-{Guid.NewGuid():N}",
+            DisplayName = "Project deletion test"
+        };
+        var project = new Project
+        {
+            OwnerId = owner.Id,
+            Name = "Project deletion test",
+            RepositoryUrl = "https://github.com/repoai-tests/delete"
+        };
+        var snapshot = new RepositorySnapshot
+        {
+            ProjectId = project.Id,
+            RepositoryUrl = project.RepositoryUrl,
+            CommitSha = "0123456789abcdef0123456789abcdef01234567",
+            ResolvedRef = "main",
+            DefaultBranch = "main"
+        };
+        var job = new BackgroundJob
+        {
+            ProjectId = project.Id,
+            Kind = "repository.import",
+            PayloadJson = "{}",
+            Status = BackgroundJobStatus.Running
+        };
+        dbContext.Users.Add(owner);
+        dbContext.Projects.Add(project);
+        dbContext.RepositorySnapshots.Add(snapshot);
+        dbContext.BackgroundJobs.Add(job);
+        dbContext.RepositoryFiles.Add(new RepositoryFile
+        {
+            SnapshotId = snapshot.Id,
+            RelativePath = "README.md",
+            SizeBytes = 1,
+            Sha256 = new string('a', 64),
+            ContentStorageKey = $"{snapshot.Id:N}/{new string('a', 64)}.txt"
+        });
+        await dbContext.SaveChangesAsync();
+
+        Assert.Equal(ProjectDeletionResult.ActiveJobs,
+            await repository.DeleteForOwnerAsync(owner.Id, project.Id, default));
+        Assert.True(await dbContext.Projects.AnyAsync(candidate => candidate.Id == project.Id));
+
+        job.Status = BackgroundJobStatus.Succeeded;
+        await dbContext.SaveChangesAsync();
+        Assert.Equal(ProjectDeletionResult.Deleted,
+            await repository.DeleteForOwnerAsync(owner.Id, project.Id, default));
+
+        Assert.False(await dbContext.Projects.AnyAsync(candidate => candidate.Id == project.Id));
+        Assert.False(await dbContext.BackgroundJobs.AnyAsync(candidate => candidate.Id == job.Id));
+        Assert.False(await dbContext.RepositorySnapshots.AnyAsync(candidate => candidate.Id == snapshot.Id));
+        Assert.False(await dbContext.RepositoryFiles.AnyAsync(candidate => candidate.SnapshotId == snapshot.Id));
+
+        dbContext.Users.Remove(owner);
+        await dbContext.SaveChangesAsync();
     }
 
     [Fact]
@@ -358,6 +430,7 @@ public sealed class ApiContractTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/snapshots/{snapshotId}/analysis", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/conversations", out _));
         Assert.True(jobPaths.TryGetProperty("/api/v1/projects/{projectId}/conversations/{conversationId}", out _));
+        Assert.True(jobPaths.GetProperty("/api/v1/projects/{projectId}").TryGetProperty("delete", out _));
         var streamChat = jobPaths.GetProperty(
             "/api/v1/projects/{projectId}/conversations/{conversationId}/messages/stream").GetProperty("post");
         Assert.True(streamChat.GetProperty("responses").TryGetProperty("200", out _));

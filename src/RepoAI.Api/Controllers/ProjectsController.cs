@@ -76,6 +76,35 @@ public sealed class ProjectsController(ProjectService projectService) : Controll
         return project is null ? NotFound() : Ok(Map(project));
     }
 
+    [HttpDelete("{projectId:guid}")]
+    [EndpointSummary("Delete an owned project and all its repository data")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Delete(
+        Guid projectId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetCurrentUserId(out var ownerId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await projectService.DeleteForOwnerAsync(ownerId, projectId, cancellationToken);
+        return result switch
+        {
+            ProjectDeletionResult.Deleted => NoContent(),
+            ProjectDeletionResult.NotFound => NotFound(),
+            ProjectDeletionResult.ActiveJobs => Conflict(new ProblemDetails
+            {
+                Title = "Project has active background jobs",
+                Detail = "Wait for the project's running jobs to finish or cancel them before deleting the project."
+            }),
+            _ => throw new InvalidOperationException("Unknown project deletion result.")
+        };
+    }
+
     private bool TryGetCurrentUserId(out Guid userId)
     {
         var subject = User.FindFirst("sub")?.Value;

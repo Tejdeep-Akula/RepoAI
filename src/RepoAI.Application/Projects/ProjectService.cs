@@ -21,4 +21,10 @@ public sealed class ProjectService(IProjectRepository projectRepository)
         Guid projectId,
         CancellationToken cancellationToken) =>
         projectRepository.FindForOwnerAsync(ownerId, projectId, cancellationToken);
+
+    public Task<ProjectDeletionResult> DeleteForOwnerAsync(
+        Guid ownerId,
+        Guid projectId,
+        CancellationToken cancellationToken) =>
+        projectRepository.DeleteForOwnerAsync(ownerId, projectId, cancellationToken);
 }

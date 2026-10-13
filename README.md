@@ -21,6 +21,9 @@ RepoAI/
     RepoAI.Infrastructure/
     RepoAI.Worker/          .NET background job worker
   frontend/               React + TypeScript browser application
+  Dockerfile.dotnet       .NET API and Worker image build
+  Dockerfile.frontend     production frontend image build
+  compose.yaml            complete local stack
   tests/
     RepoAI.Api.Tests/
   RepoAI-design/
@@ -62,7 +65,8 @@ Secret is not used. After sign-in, the workspace provides separate Repositories,
 Conversations, and Storyboards destinations. Repositories open an individual
 workspace with overview, analysis, storyboards, and conversations. Saved
 conversations are grouped by repository; selecting one opens a dedicated chat
-page. Each repository's Storyboards workspace can generate and review an
+page. Owned projects can be deleted from the repository list or workspace after
+confirming that all associated data will be removed. Each repository's Storyboards workspace can generate and review an
 evidence-grounded explanation plan from a completed architecture analysis. Project
 creation is available from the Repositories page. The JWT is sent as a bearer
 token only for project API calls.
@@ -71,6 +75,68 @@ Local OAuth settings live in Git-ignored `frontend/.env.local` and
 `src/RepoAI.Api/appsettings.Local.json`. Restart both the Vite dev server and
 the .NET API after changing these files. To verify the production build, run
 `npm run build` from `frontend/`.
+
+## Run the containerized application
+
+Docker Compose runs PostgreSQL, the .NET API, the background Worker, and the
+production React frontend. PostgreSQL and application content use named volumes;
+published ports bind to localhost. Ollama is intentionally external to Compose:
+run Ollama on the host, ensure the configured model is available, and keep its
+API reachable. Docker Desktop uses `host.docker.internal` by default; on another
+host, set `REPOAI_OLLAMA_ENDPOINT` in `.env` to a reachable endpoint.
+
+Copy the example environment file and set a database password, the Google web
+client ID, and a JWT signing key. Generate local values with:
+
+```sh
+cp .env.example .env
+openssl rand -hex 32
+openssl rand -base64 48
+```
+
+Put the first generated value in `REPOAI_DB_PASSWORD`, the second in
+`REPOAI_JWT_SIGNING_KEY`, and set `REPOAI_GOOGLE_CLIENT_ID`. Add
+`http://localhost:3000` as an authorized JavaScript origin in Google OAuth.
+Never commit `.env`. Google client ID is public configuration; the database
+password and JWT signing key are secrets. Local `appsettings*.json` files are
+excluded from the Docker build context, so their values are not copied into the
+published images.
+
+Start the stack from the repository root:
+
+```sh
+docker compose up --build -d
+```
+
+Open the application at `http://localhost:3000`. The frontend proxies API
+requests to the API container; the API is also available at
+`http://localhost:5080`, with liveness at `/health`. Follow service logs with
+`docker compose logs -f api worker`. Stop containers with `docker compose down`;
+this preserves PostgreSQL and repository-content volumes. `docker compose down
+-v` deletes those volumes and their data.
+
+To publish versioned multi-architecture Docker Hub images, first review the
+release contents and select the Docker Hub namespace and version. Then log in,
+create a Buildx builder that supports multi-platform output, and run the release
+script from the repository root:
+
+```sh
+docker login
+docker buildx create --name repoai-multiarch --driver docker-container --use
+docker buildx inspect --bootstrap
+REPOAI_IMAGE_NAMESPACE=your-dockerhub-username \
+REPOAI_IMAGE_TAG=1.0.0 \
+REPOAI_GOOGLE_CLIENT_ID=your-production-client-id \
+sh scripts/publish-images.sh
+```
+
+The script publishes `linux/amd64` and `linux/arm64` images by default; set
+`REPOAI_IMAGE_PLATFORMS` to override this. Replace the example namespace,
+version, and client ID with approved release values. The images are
+`<dockerhub-user>/repoai-api`, `<dockerhub-user>/repoai-worker`, and
+`<dockerhub-user>/repoai-frontend`. The Google ID is embedded in the static
+frontend at build time and is public configuration. Do not publish until the
+namespace, tag, image contents, OAuth origin, and configuration are reviewed.
 
 Application contains use cases and persistence/job interfaces; Domain contains
 the core entities; Infrastructure implements PostgreSQL persistence and repository
@@ -270,6 +336,7 @@ tokens are stored.
 | `POST /api/v1/projects` | Create a project for the caller | Bearer token required |
 | `GET /api/v1/projects` | List only the caller's projects | Bearer token required |
 | `GET /api/v1/projects/{projectId}` | Get one of the caller's projects | Bearer token required |
+| `DELETE /api/v1/projects/{projectId}` | Delete an owned project and its associated data | Bearer token required; returns 409 while a job is running |
 
 The Project API derives the owner from the JWT `sub` claim. It never accepts an
 owner ID from the request. Reads include the owner ID in the database query, so a

@@ -1,0 +1,25 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
+WORKDIR /source
+
+ARG APP_PROJECT=RepoAI.Api
+COPY . .
+RUN dotnet restore "src/${APP_PROJECT}/${APP_PROJECT}.csproj"
+RUN dotnet publish "src/${APP_PROJECT}/${APP_PROJECT}.csproj" \
+    --configuration Release \
+    --no-restore \
+    --output /publish \
+    /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /publish .
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/repository-content \
+    && chown -R "$APP_UID:$APP_UID" /data
+ENV ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 8080
+USER $APP_UID
+ENTRYPOINT ["dotnet"]
+CMD ["RepoAI.Api.dll"]
